@@ -117,7 +117,7 @@ async function main() {
   let html = fs.readFileSync(path.join(OUT_DIR, 'index.html'), 'utf8');
   html = html.replace('<script src="app.js"></script>', '<script src="demo-shim.js"></script>\n<script src="app.js"></script>');
   html = html.replace('<body>', `<body>
-<div class="demo-banner">Демо-режим: статичные данные одного снепшота, изменения не сохраняются. <a href="https://github.com" target="_blank" rel="noopener">Исходный код</a></div>`);
+<div class="demo-banner">Демо-режим: статичные данные одного снепшота, изменения не сохраняются. <a href="https://github.com/tinabohun-dot/spy-tool-v3" target="_blank" rel="noopener">Исходный код</a></div>`);
   fs.writeFileSync(path.join(OUT_DIR, 'index.html'), html);
 
   console.log('Готово:', OUT_DIR);
