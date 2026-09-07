@@ -5,6 +5,7 @@
 const puppeteer = require('puppeteer');
 
 let browserPromise = null;
+let relaunchPromise = null;
 function launchBrowser() {
   return puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
 }
@@ -12,9 +13,23 @@ async function getBrowser() {
   if (!browserPromise) browserPromise = launchBrowser();
   const browser = await browserPromise;
   // Переиспользуем один и тот же процесс браузера для всех вкладок. Если он
-  // реально упал (а не просто одна вкладка не догрузилась), перезапускаем.
-  if (!browser.connected) browserPromise = launchBrowser();
-  return browserPromise;
+  // реально упал (а не просто одна вкладка не догрузилась), перезапускаем —
+  // но только один раз, даже если это заметили сразу несколько параллельных
+  // вызовов, иначе каждый из них плодит свой процесс Chromium и старый никто
+  // не закрывает (утечка процессов при параллельной обработке).
+  if (!browser.connected) {
+    if (!relaunchPromise) {
+      relaunchPromise = (async () => {
+        await browser.close().catch(() => {});
+        const fresh = await launchBrowser();
+        relaunchPromise = null;
+        return fresh;
+      })();
+      browserPromise = relaunchPromise;
+    }
+    return relaunchPromise;
+  }
+  return browser;
 }
 
 // Ограничиваем число одновременно открытых вкладок, иначе при параллельном
