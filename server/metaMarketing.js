@@ -160,13 +160,17 @@ function groupRowsByCreative(allRows) {
     const groupKey = getCreativeGroupKey(row.ad_name);
     const key = groupKey !== null ? groupKey : '__noNum__' + row.ad_name;
     if (!groups[key]) {
-      const copy = { ...row, _mergedCount: 1, _accountNames: [row._accountName], _prevPlays: getVideoMetric(row.video_play_actions) };
+      const copy = {
+        ...row, _mergedCount: 1, _accountNames: [row._accountName],
+        _prevPlays: getVideoMetric(row.video_play_actions), _adIds: [row.ad_id]
+      };
       groups[key] = copy;
       order.push(key);
       continue;
     }
     const target = groups[key];
     target._mergedCount++;
+    target._adIds.push(row.ad_id);
     if (!target._accountNames.includes(row._accountName)) target._accountNames.push(row._accountName);
     if (row.ad_name.length < target.ad_name.length) target.ad_name = row.ad_name;
     for (const f of ['impressions', 'reach', 'clicks', 'unique_clicks', 'spend']) {
@@ -223,6 +227,7 @@ function buildCreativeEntry(row) {
 
   return {
     adId: row.ad_id,
+    adIds: row._adIds || [row.ad_id],
     name: row.ad_name,
     type: isVideo ? 'Video' : 'Static',
     mergedCount: row._mergedCount || 1,
@@ -272,23 +277,29 @@ function summarize(creatives) {
   };
 }
 
-const previewCache = new Map();
-async function fetchCreativePreview(adId) {
-  if (!adId) return null;
-  if (previewCache.has(adId)) return previewCache.get(adId);
+// Превью и текущий статус доставки берём одним запросом на ad_id (effective_status:
+// ACTIVE значит объявление сейчас реально крутится, любое другое значение —
+// остановлено/на паузе/отклонено и т.п. — считаем "не активно").
+const adInfoCache = new Map();
+async function fetchAdInfo(adId) {
+  if (!adId) return { previewUrl: null, status: null };
+  if (adInfoCache.has(adId)) return adInfoCache.get(adId);
+  let info;
   try {
     const url = new URL(`https://graph.facebook.com/${API_VERSION}/${adId}`);
-    url.searchParams.set('fields', 'creative{thumbnail_url,image_url}');
+    url.searchParams.set('fields', 'creative{thumbnail_url,image_url},effective_status');
     url.searchParams.set('access_token', token());
     const resp = await fetch(url.toString());
     const json = await resp.json();
-    const preview = json?.creative?.thumbnail_url || json?.creative?.image_url || null;
-    previewCache.set(adId, preview);
-    return preview;
+    info = {
+      previewUrl: json?.creative?.thumbnail_url || json?.creative?.image_url || null,
+      status: json?.effective_status || null
+    };
   } catch {
-    previewCache.set(adId, null);
-    return null;
+    info = { previewUrl: null, status: null };
   }
+  adInfoCache.set(adId, info);
+  return info;
 }
 
 async function mapConcurrent(items, limit, fn) {
@@ -300,7 +311,17 @@ async function mapConcurrent(items, limit, fn) {
 }
 
 async function attachPreviews(creatives) {
-  await mapConcurrent(creatives, 8, async (c) => { c.previewUrl = await fetchCreativePreview(c.adId); });
+  const allIds = new Set();
+  for (const c of creatives) { (c.adIds || [c.adId]).forEach((id) => id && allIds.add(id)); }
+  await mapConcurrent([...allIds], 8, fetchAdInfo);
+
+  for (const c of creatives) {
+    const rep = adInfoCache.get(c.adId);
+    c.previewUrl = rep?.previewUrl || null;
+    const statuses = (c.adIds || [c.adId]).map((id) => adInfoCache.get(id)?.status);
+    c.activeCount = statuses.filter((s) => s === 'ACTIVE').length;
+    c.totalCount = statuses.length;
+  }
   return creatives;
 }
 

@@ -530,6 +530,7 @@ let analyticsGradeFilter = '';
 let analyticsTypeFilter = '';
 let analyticsNameFilter = '';
 let analyticsSort = { key: 'spend', dir: 'desc' };
+let analyticsVisibleCreatives = [];
 
 function initAnalyticsView() {
   if (analyticsInited) return;
@@ -631,6 +632,16 @@ function renderAnalyticsSummary(summary, count) {
     </div>`;
 }
 
+function renderStatusBadge(c) {
+  const total = c.totalCount ?? 1;
+  const active = c.activeCount ?? 0;
+  let bg, color, label;
+  if (active === 0) { bg = '#e6b8b8'; color = '#7f0000'; label = 'Остановлен'; }
+  else if (active === total) { bg = '#c8e6c9'; color = '#1b5e20'; label = 'Активен'; }
+  else { bg = '#ffe0b2'; color = '#e65100'; label = `${active}/${total} активны`; }
+  return `<span class="grade-badge" style="background:${bg};color:${color}">${label}</span>`;
+}
+
 function renderAnalyticsRow(c) {
   const badge = GRADE_BADGE_COLORS[c.grade] || { bg: '#eee', color: '#333' };
   const rowClass = 'grade-row--' + c.grade.replace(/\s+/g, '-');
@@ -639,6 +650,7 @@ function renderAnalyticsRow(c) {
       <td>${c.previewUrl ? `<img class="thumb" src="${c.previewUrl}" />` : ''}</td>
       <td class="analytics-table__name" title="${c.name}">${c.name}</td>
       <td>${c.type}</td>
+      <td>${renderStatusBadge(c)}</td>
       <td><span class="grade-badge" style="background:${badge.bg};color:${badge.color}">${c.grade}</span></td>
       <td>${money(c.spend)}</td>
       <td>${c.purchases}</td>
@@ -697,8 +709,65 @@ function renderAnalyticsView() {
   $all('#analytics-table th[data-sort]').forEach((th) => th.classList.toggle('is-sorted', th.dataset.sort === key));
   $('#analytics-tbody').innerHTML = creatives.length
     ? creatives.map(renderAnalyticsRow).join('')
-    : '<tr><td colspan="30" class="empty-note">Нет данных по выбранным фильтрам.</td></tr>';
+    : '<tr><td colspan="33" class="empty-note">Нет данных по выбранным фильтрам.</td></tr>';
+
+  analyticsVisibleCreatives = creatives;
 }
+
+const ANALYTICS_CSV_COLUMNS = [
+  ['Название', (c) => c.name],
+  ['Тип', (c) => c.type],
+  ['Активных копий', (c) => `${c.activeCount ?? 0}/${c.totalCount ?? 1}`],
+  ['Grade', (c) => c.grade],
+  ['Spend', (c) => c.spend],
+  ['Purchases', (c) => c.purchases],
+  ['CPA', (c) => c.cpa ?? ''],
+  ['CTR', (c) => c.ctr],
+  ['Impressions', (c) => c.impressions],
+  ['Reach', (c) => c.reach],
+  ['Frequency', (c) => c.frequency],
+  ['Clicks', (c) => c.clicks],
+  ['Unique Clicks', (c) => c.uniqueClicks],
+  ['Link Clicks', (c) => c.linkClicks],
+  ['Landing Views', (c) => c.landingViews],
+  ['Cost per Landing View', (c) => c.costPerLandingView ?? ''],
+  ['CPM', (c) => c.cpm],
+  ['CPC', (c) => c.cpc ?? ''],
+  ['Add to Cart', (c) => c.addToCart],
+  ['Leads', (c) => c.leads],
+  ['Purchase Value', (c) => c.purchaseValue],
+  ['Video Plays', (c) => c.videoPlays ?? ''],
+  ['Hook Rate', (c) => c.hookRate ?? ''],
+  ['Video 25%', (c) => c.videoP25 ?? ''],
+  ['Video 50%', (c) => c.videoP50 ?? ''],
+  ['Video 75%', (c) => c.videoP75 ?? ''],
+  ['Video 100%', (c) => c.videoP100 ?? ''],
+  ['Avg Watch Time', (c) => c.avgWatchTime ?? ''],
+  ['Копий', (c) => c.mergedCount],
+  ['Аккаунты', (c) => (c.accounts || []).join(' / ')],
+  ['Campaign Name', (c) => c.campaignName]
+];
+
+function csvCell(value) {
+  const s = String(value ?? '');
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+function downloadAnalyticsCsv() {
+  const header = ANALYTICS_CSV_COLUMNS.map(([label]) => csvCell(label)).join(',');
+  const rows = analyticsVisibleCreatives.map((c) => ANALYTICS_CSV_COLUMNS.map(([, get]) => csvCell(get(c))).join(','));
+  const csv = '﻿' + [header, ...rows].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const label = analyticsAccountFilter === 'all' ? 'all-accounts' : analyticsAccountFilter;
+  a.href = url;
+  a.download = `analytics_${label}_${$('#analytics-since').value}_${$('#analytics-until').value}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+$('#analytics-download-btn').addEventListener('click', downloadAnalyticsCsv);
 
 // ---------- Старт ----------
 loadBrands();
