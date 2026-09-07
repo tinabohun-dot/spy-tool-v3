@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Разведка — поиск креативов конкурентов</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="demo-banner">Демо-режим: статичные данные одного снепшота, изменения не сохраняются. <a href="https://github.com" target="_blank" rel="noopener">Исходный код</a></div>
+
+<div class="app">
+
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand__mark">◎</span>
+      <span class="brand__name">Разведка</span>
+    </div>
+    <p class="brand__tagline">Что показывают конкуренты — в открытую</p>
+
+    <nav class="side-nav">
+      <button class="side-nav__item is-active" data-view="library">Ad Library</button>
+      <button class="side-nav__item" data-view="search">Быстрый поиск</button>
+      <button class="side-nav__item" data-view="jobs">Сбор данных</button>
+    </nav>
+
+    <form id="search-form" class="filters" hidden>
+      <label class="field">
+        <span class="field__label">Бренд или ключевое слово</span>
+        <input type="text" id="q" name="q" placeholder="например, Nike" autocomplete="off" required />
+      </label>
+      <label class="field">
+        <span class="field__label">Страны показа</span>
+        <input type="text" id="countries" name="countries" placeholder="US, GB, DE" value="US" autocomplete="off" />
+      </label>
+      <fieldset class="field">
+        <legend class="field__label">Статус</legend>
+        <div class="radio-row">
+          <label class="radio"><input type="radio" name="status" value="ACTIVE" checked /> Активные</label>
+          <label class="radio"><input type="radio" name="status" value="INACTIVE" /> Завершённые</label>
+          <label class="radio"><input type="radio" name="status" value="ALL" /> Все</label>
+        </div>
+      </fieldset>
+      <button type="submit" class="btn btn--primary">Искать креативы</button>
+    </form>
+  </aside>
+
+  <main class="content">
+
+    <!-- ===== Ad Library: список брендов ===== -->
+    <section id="view-library" class="view">
+      <div class="library-top">
+        <h1>Ad Library</h1>
+        <div class="library-top__row">
+          <label class="search-pill">
+            <span class="search-pill__icon">⌕</span>
+            <input type="text" id="brand-search" placeholder="Искать бренд..." autocomplete="off" />
+          </label>
+          <button id="add-brand-btn" class="btn btn--pill">+ Добавить бренд</button>
+        </div>
+      </div>
+
+      <div class="library-controls">
+        <div class="tab-pills">
+          <span class="tab-pill is-disabled" title="Скоро">Scaling</span>
+          <span class="tab-pill is-disabled" title="Скоро">Top EU Reach</span>
+          <span class="tab-pill is-active" id="tracked-count-pill">Tracked (0)</span>
+        </div>
+        <select id="category-filter" class="category-select">
+          <option value="">Все категории</option>
+        </select>
+      </div>
+
+      <div id="brands-grid" class="grid grid--brands"></div>
+    </section>
+
+    <!-- ===== Карточка бренда ===== -->
+    <section id="view-brand" class="view" hidden>
+      <button id="back-to-library" class="btn btn--ghost">← Ad Library</button>
+      <div class="view__header">
+        <h1 id="brand-title">—</h1>
+        <p id="brand-sub" class="view__sub"></p>
+        <p id="brand-stats-overview" class="view__sub view__sub--stats"></p>
+      </div>
+
+      <div class="brand-actions">
+        <button id="add-page-btn" class="btn btn--ghost">+ Добавить Ad Page</button>
+        <button id="refresh-brand-btn" class="btn btn--ghost">↻ Обновить сейчас</button>
+      </div>
+      <div id="brand-pages" class="pages-row"></div>
+
+      <div class="tabs">
+        <button class="tab is-active" data-tab="metrics">Metrics</button>
+        <button class="tab" data-tab="eu-reach">EU Reach</button>
+        <button class="tab" data-tab="trending">Trending ads</button>
+        <button class="tab" data-tab="winning">Winning ads</button>
+        <button class="tab" data-tab="creative-tests">Creative tests</button>
+        <button class="tab" data-tab="ads">Все креативы</button>
+      </div>
+
+      <div id="tab-metrics" class="tab-panel is-active">
+        <div class="panel-grid">
+          <div class="panel-card">
+            <h3>Публикации по дням</h3>
+            <p class="hint">За последние 30 дней</p>
+            <p id="ads-published-number" class="big-number">—</p>
+            <canvas id="chart-by-day"></canvas>
+          </div>
+          <div class="panel-card">
+            <h3>Формат</h3>
+            <div id="format-stacked-bar" class="stacked-bar"></div>
+            <div id="format-legend" class="stacked-bar__legend"></div>
+          </div>
+          <div class="panel-card">
+            <h3>Языки</h3>
+            <div id="lang-bars" class="bar-list"></div>
+          </div>
+          <div class="panel-card">
+            <h3>Платформы</h3>
+            <div id="platform-bars" class="bar-list"></div>
+          </div>
+          <div class="panel-card">
+            <h3>Top Destinations</h3>
+            <div id="destination-bars" class="bar-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-eu-reach" class="tab-panel">
+        <div class="panel-card">
+          <h3>Total EU Reach</h3>
+          <p id="eu-reach-total" class="big-number">—</p>
+          <p class="hint">Доступно только для объявлений, показывавшихся в ЕС (требование DSA). Если ноль — данных пока нет.</p>
+        </div>
+        <div class="panel-grid">
+          <div class="panel-card">
+            <h3>Пол</h3>
+            <div id="eu-gender-bars" class="bar-list"></div>
+          </div>
+          <div class="panel-card">
+            <h3>Возраст</h3>
+            <div id="eu-age-bars" class="bar-list"></div>
+          </div>
+          <div class="panel-card">
+            <h3>Страны</h3>
+            <div id="eu-country-bars" class="bar-list"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-trending" class="tab-panel">
+        <p class="hint">Ранг считается по еженедельному охвату. Появится после 2+ сборов снепшотов.</p>
+        <div id="trending-list" class="trending-list"></div>
+      </div>
+
+      <div id="tab-winning" class="tab-panel">
+        <table class="table">
+          <thead><tr><th>Creative</th><th>Activity</th><th>Duplicates</th><th>Score</th></tr></thead>
+          <tbody id="winning-tbody"></tbody>
+        </table>
+      </div>
+
+      <div id="tab-creative-tests" class="tab-panel">
+        <div class="panel-card">
+          <h3>Запуски объявлений по дням (active / inactive)</h3>
+          <canvas id="chart-creative-tests"></canvas>
+        </div>
+      </div>
+
+      <div id="tab-ads" class="tab-panel">
+        <div class="ads-toolbar">
+          <div class="segmented" id="ads-status-filter">
+            <button type="button" class="segmented__btn is-active" data-status="all">Все</button>
+            <button type="button" class="segmented__btn" data-status="active">Активные</button>
+            <button type="button" class="segmented__btn" data-status="inactive">Неактивные</button>
+          </div>
+          <select id="ads-page-filter" class="select">
+            <option value="all">Все аккаунты</option>
+          </select>
+        </div>
+        <div id="ads-grid" class="grid grid--ads"></div>
+      </div>
+    </section>
+
+    <!-- ===== Быстрый поиск (без сохранения истории) ===== -->
+    <section id="view-search" class="view" hidden>
+      <div class="view__header">
+        <h1 id="results-title">Введите бренд слева, чтобы начать</h1>
+        <p id="results-sub" class="view__sub"></p>
+      </div>
+      <div id="results-status" class="status-line"></div>
+      <div id="results-grid" class="grid"></div>
+      <div class="load-more-wrap">
+        <button id="load-more" class="btn btn--ghost" hidden>Показать ещё</button>
+      </div>
+    </section>
+
+    <!-- ===== Сбор данных: статус по каждой Ad Page ===== -->
+    <section id="view-jobs" class="view" hidden>
+      <div class="view__header">
+        <h1>Сбор данных</h1>
+        <p class="view__sub">Идёт ли сейчас сбор снепшота по каждой Ad Page, и чем закончился последний запуск.</p>
+      </div>
+      <div id="jobs-list" class="jobs-list"></div>
+    </section>
+
+  </main>
+</div>
+
+<!-- Модалка добавления бренда -->
+<dialog id="add-brand-dialog">
+  <form id="add-brand-form" method="dialog">
+    <h3>Новый бренд</h3>
+    <label class="field"><span class="field__label">Название</span><input id="new-brand-name" required /></label>
+    <label class="field"><span class="field__label">Категория (необязательно)</span><input id="new-brand-category" /></label>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn--ghost" data-close>Отмена</button>
+      <button type="submit" class="btn btn--primary">Создать</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Модалка добавления Ad Page -->
+<dialog id="add-page-dialog">
+  <form id="add-page-form" method="dialog">
+    <h3>Добавить Ad Page</h3>
+    <p class="hint">Платформа сейчас поддерживается только Meta.</p>
+    <label class="field"><span class="field__label">Ads Library URL или Page ID</span><input id="new-page-input" required placeholder="https://www.facebook.com/ads/library/?view_all_page_id=123..." /></label>
+    <label class="field"><span class="field__label">Название страницы (необязательно)</span><input id="new-page-name" /></label>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn--ghost" data-close>Отмена</button>
+      <button type="submit" class="btn btn--primary">Добавить и собрать данные</button>
+    </div>
+  </form>
+</dialog>
+
+<template id="card-template">
+  <article class="card">
+    <header class="card__header">
+      <div class="card__page"></div>
+      <span class="card__status"></span>
+    </header>
+    <div class="card__preview">
+      <img class="card__thumb" hidden />
+      <button class="card__preview-toggle">Показать креатив</button>
+    </div>
+    <p class="card__body"></p>
+    <dl class="card__meta"></dl>
+    <footer class="card__footer">
+      <a class="card__link" target="_blank" rel="noopener">Открыть в Ad Library ↗</a>
+      <button class="card__save btn btn--small">Сохранить</button>
+    </footer>
+  </article>
+</template>
+
+<script src="demo-shim.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

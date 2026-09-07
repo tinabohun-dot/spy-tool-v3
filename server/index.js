@@ -1,0 +1,169 @@
+require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const path = require('path');
+const cron = require('node-cron');
+
+const { searchAds } = require('./metaApi');
+const { inspectSnapshot, closeBrowser } = require('./snapshotInspect');
+const storage = require('./storage');
+const db = require('./db');
+const { fetchSnapshotForAdPage } = require('./fetchService');
+const analytics = require('./analytics');
+const jobStatus = require('./jobStatus');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, '..', 'public')));
+
+app.get('/api/search', async (req, res) => {
+  try {
+    const { q, countries, status = 'ACTIVE', platforms, after, limit } = req.query;
+    const result = await searchAds({
+      searchTerms: q,
+      countries: countries ? countries.split(',').map((c) => c.trim().toUpperCase()) : ['US'],
+      activeStatus: status,
+      platforms: platforms ? platforms.split(',').map((p) => p.trim()) : [],
+      after: after || undefined,
+      limit: limit ? Number(limit) : 25
+    });
+
+    // Подтягиваем превью для каждой карточки (best-effort, параллельно)
+    const enriched = await Promise.all(
+      result.ads.map(async (ad) => {
+        const { thumbnail, format } = await inspectSnapshot(ad.ad_snapshot_url);
+        return { ...ad, thumbnail_url: thumbnail, format };
+      })
+    );
+
+    res.json({ ...result, ads: enriched });
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message, details: err.metaError });
+  }
+});
+
+app.get('/api/saved', (req, res) => res.json(storage.getAll()));
+app.post('/api/saved', (req, res) => {
+  const ad = req.body;
+  if (!ad || !ad.id) return res.status(400).json({ error: 'Нужен объект объявления с полем id' });
+  res.json(storage.save(ad));
+});
+app.delete('/api/saved/:id', (req, res) => res.json(storage.remove(req.params.id)));
+
+app.get('/api/brands', (req, res) => {
+  const brands = db.prepare('SELECT * FROM brands ORDER BY created_at DESC').all();
+  const pages = db.prepare('SELECT * FROM ad_pages').all();
+  res.json(
+    brands.map((b) => ({
+      ...b,
+      pages: pages.filter((p) => p.brand_id === b.id),
+      stats: analytics.libraryStats(b.id)
+    }))
+  );
+});
+
+app.post('/api/brands', (req, res) => {
+  const { name, category } = req.body;
+  if (!name) return res.status(400).json({ error: 'Нужно имя бренда' });
+  const info = db.prepare('INSERT INTO brands (name, category) VALUES (?, ?)').run(name, category || null);
+  res.json(db.prepare('SELECT * FROM brands WHERE id = ?').get(info.lastInsertRowid));
+});
+
+app.delete('/api/brands/:id', (req, res) => {
+  db.prepare('DELETE FROM brands WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+function extractPageId(input) {
+  const m = String(input).match(/view_all_page_id=(\d+)/);
+  if (m) return m[1];
+  const digits = String(input).match(/^\d+$/);
+  return digits ? digits[0] : null;
+}
+
+app.post('/api/brands/:brandId/pages', async (req, res) => {
+  try {
+    const { platform = 'meta', input, page_name } = req.body;
+    if (platform !== 'meta') return res.status(400).json({ error: 'Пока поддержан только platform=meta' });
+    const pageId = extractPageId(input);
+    if (!pageId) return res.status(400).json({ error: 'Не удалось распознать page_id из введённой строки' });
+
+    db.prepare('INSERT OR IGNORE INTO ad_pages (brand_id, platform, page_id, page_name) VALUES (?,?,?,?)')
+      .run(req.params.brandId, platform, pageId, page_name || null);
+    const adPage = db.prepare('SELECT * FROM ad_pages WHERE platform = ? AND page_id = ?').get(platform, pageId);
+    fetchSnapshotForAdPage(adPage).catch((e) => console.error('Первичный сбор снепшота не удался:', e.message));
+    res.json(adPage);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/pages/:id', (req, res) => { db.prepare('DELETE FROM ad_pages WHERE id = ?').run(req.params.id); res.json({ ok: true }); });
+
+app.post('/api/brands/:brandId/refresh', async (req, res) => {
+  const pages = db.prepare('SELECT * FROM ad_pages WHERE brand_id = ?').all(req.params.brandId);
+  const results = [];
+  for (const p of pages) {
+    try {
+      results.push({ page_id: p.page_id, page_name: p.page_name, ...(await fetchSnapshotForAdPage(p)) });
+    } catch (err) {
+      console.error(`Сбор снепшота не удался для page_id=${p.page_id} (${p.page_name}):`, err.message);
+      results.push({ page_id: p.page_id, page_name: p.page_name, error: err.message });
+    }
+  }
+  res.json({ results });
+});
+
+app.get('/api/brands/:brandId/metrics', (req, res) => res.json(analytics.metrics(req.params.brandId)));
+app.get('/api/brands/:brandId/eu-reach', (req, res) => res.json(analytics.euReach(req.params.brandId)));
+app.get('/api/brands/:brandId/trending', (req, res) => res.json(analytics.trending(req.params.brandId)));
+app.get('/api/brands/:brandId/winning', (req, res) => res.json(analytics.winningAds(req.params.brandId)));
+app.get('/api/brands/:brandId/creative-tests', (req, res) => res.json(analytics.creativeTests(req.params.brandId)));
+app.get('/api/brands/:brandId/ads', (req, res) => res.json(analytics.creativesGrid(req.params.brandId)));
+
+// Статус сбора снепшотов по каждой Ad Page: идёт ли сейчас сбор, сколько уже
+// обработано, и чем закончился последний запуск — иначе непонятно, "просто
+// нет данных" это или "ещё собирается".
+app.get('/api/jobs', (req, res) => {
+  const pages = db.prepare(`
+    SELECT ad_pages.id, ad_pages.page_name, ad_pages.page_id, ad_pages.brand_id, brands.name as brand_name
+    FROM ad_pages JOIN brands ON brands.id = ad_pages.brand_id
+  `).all();
+  const jobsByPageId = Object.fromEntries(jobStatus.listJobs().map((j) => [j.pageId, j]));
+  res.json(pages.map((p) => ({
+    pageId: p.id,
+    pageName: p.page_name || p.page_id,
+    brandId: p.brand_id,
+    brandName: p.brand_name,
+    ...(jobsByPageId[p.id] || { status: 'idle', startedAt: null, finishedAt: null, total: null, processed: 0, error: null })
+  })));
+});
+
+const schedule = process.env.CRON_SCHEDULE || '0 3 * * *';
+cron.schedule(schedule, async () => {
+  console.log('[cron] Старт ежедневного сбора снепшотов:', new Date().toISOString());
+  const pages = db.prepare('SELECT * FROM ad_pages').all();
+  for (const p of pages) {
+    try { await fetchSnapshotForAdPage(p); } catch (e) { console.error(`[cron] Ошибка для page_id=${p.page_id}:`, e.message); }
+  }
+  console.log('[cron] Готово');
+});
+
+app.listen(PORT, () => {
+  console.log(`Сервер запущен: http://localhost:${PORT}`);
+  if (!process.env.META_ACCESS_TOKEN) console.warn('⚠️  META_ACCESS_TOKEN не найден в .env — запросы к Meta API будут падать с ошибкой.');
+});
+
+// Без этого при штатной остановке (Ctrl+C / kill) процесс headless-браузера
+// остаётся висеть в фоне осиротевшим.
+async function shutdown() {
+  await closeBrowser().catch(() => {});
+  process.exit(0);
+}
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
