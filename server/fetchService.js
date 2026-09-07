@@ -7,18 +7,33 @@ const jobStatus = require('./jobStatus');
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function hashText(text) { return crypto.createHash('md5').update((text || '').trim().toLowerCase()).digest('hex'); }
 
-async function fetchSnapshotForAdPage(adPage) {
+async function fetchSnapshotForAdPage(adPage, days = 7) {
   jobStatus.startJob(adPage);
   try {
-    return await runFetch(adPage);
+    return await runFetch(adPage, days);
   } catch (err) {
     jobStatus.failJob(adPage.id, err);
     throw err;
   }
 }
 
-async function runFetch(adPage) {
-  const ads = await fetchAllAdsForPage({ pageId: adPage.page_id });
+// Собираем не весь исторический архив страницы, а только то, что реально
+// нужно: объявления, которые сейчас активны (независимо от даты старта —
+// долгоживущую активную кампанию не теряем из виду), плюс те, что стартовали
+// в выбранном периоде (по умолчанию 7 дней). Старые остановленные тесты вне
+// периода не тянем и не рендерим повторно каждый день — это и было основной
+// причиной, по которой мы выжигали лимит Meta на рендер снепшотов.
+function withinCollectionWindow(ad, days) {
+  const isActive = !ad.ad_delivery_stop_time || new Date(ad.ad_delivery_stop_time) > new Date();
+  if (isActive) return true;
+  if (!ad.ad_delivery_start_time) return false;
+  const since = new Date(Date.now() - days * 86400000);
+  return new Date(ad.ad_delivery_start_time) >= since;
+}
+
+async function runFetch(adPage, days = 7) {
+  const allAds = await fetchAllAdsForPage({ pageId: adPage.page_id });
+  const ads = allAds.filter((ad) => withinCollectionWindow(ad, days));
   jobStatus.setTotal(adPage.id, ads.length);
   const date = todayStr();
 

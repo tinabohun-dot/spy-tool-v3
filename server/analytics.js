@@ -160,4 +160,37 @@ function libraryStats(brandId) {
   return { active, total: totalRow?.n || 0 };
 }
 
-module.exports = { metrics, euReach, trending, winningAds, creativeTests, creativesGrid, pageIdsForBrand, libraryStats };
+/** Вкладка "Scaling" в Ad Library: топ креативов по ВСЕМ отслеживаемым брендам
+ * и аккаунтам сразу — активные сейчас, с большим числом дублей (значит,
+ * конкурент масштабирует именно этот креатив) и большим охватом. */
+function scalingCreatives(limit = 30) {
+  const pages = db.prepare(`
+    SELECT p.id, p.brand_id, b.name as brand_name FROM ad_pages p JOIN brands b ON b.id = p.brand_id
+  `).all();
+  const pagesByBrand = {};
+  for (const p of pages) (pagesByBrand[p.brand_id] ||= { brandName: p.brand_name, pageIds: [] }).pageIds.push(p.id);
+
+  const groups = [];
+  for (const { brandName, pageIds } of Object.values(pagesByBrand)) {
+    const rows = latestSnapshot(pageIds).filter((r) => r.is_active);
+    const byDupGroup = {};
+    for (const r of rows) (byDupGroup[r.duplicate_group] ||= []).push(r);
+    for (const dupRows of Object.values(byDupGroup)) {
+      const representative = dupRows.find((r) => r.thumbnail_url) || dupRows[0];
+      const totalReach = dupRows.reduce((s, r) => s + (r.eu_total_reach || 0), 0);
+      groups.push({ ...representative, brandName, duplicates: dupRows.length, totalReach });
+    }
+  }
+
+  const maxReach = Math.max(1, ...groups.map((g) => g.totalReach));
+  const maxDup = Math.max(1, ...groups.map((g) => g.duplicates));
+  const scored = groups.map((g) => {
+    const dupScore = g.duplicates / maxDup;
+    const reachScore = g.totalReach / maxReach;
+    const score = Math.round((0.5 * dupScore + 0.5 * reachScore) * 100);
+    return { ...g, score };
+  });
+  return scored.sort((a, b) => b.score - a.score).slice(0, limit);
+}
+
+module.exports = { metrics, euReach, trending, winningAds, creativeTests, creativesGrid, scalingCreatives, pageIdsForBrand, libraryStats };

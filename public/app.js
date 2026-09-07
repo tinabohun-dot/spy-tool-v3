@@ -17,7 +17,6 @@ $all('.side-nav__item').forEach((btn) => {
     $all('.side-nav__item').forEach((b) => b.classList.remove('is-active'));
     btn.classList.add('is-active');
     const view = btn.dataset.view;
-    $('#search-form').hidden = view !== 'search';
     $('#view-library').hidden = view !== 'library';
     $('#view-search').hidden = view !== 'search';
     $('#view-jobs').hidden = view !== 'jobs';
@@ -108,6 +107,36 @@ function renderBrandsGrid() {
 
 $('#brand-search').addEventListener('input', renderBrandsGrid);
 $('#category-filter').addEventListener('change', renderBrandsGrid);
+
+// ---------- Ad Library: Scaling (топ креативов по всем брендам сразу) ----------
+$('#scaling-pill').addEventListener('click', () => {
+  $('#scaling-pill').classList.add('is-active');
+  $('#tracked-count-pill').classList.remove('is-active');
+  $('#brands-grid').hidden = true;
+  $('#scaling-view').hidden = false;
+  loadScaling();
+});
+
+$('#tracked-count-pill').addEventListener('click', () => {
+  $('#tracked-count-pill').classList.add('is-active');
+  $('#scaling-pill').classList.remove('is-active');
+  $('#scaling-view').hidden = true;
+  $('#brands-grid').hidden = false;
+});
+
+async function loadScaling() {
+  const rows = await fetch('/api/scaling').then((r) => r.json());
+  $('#scaling-tbody').innerHTML = rows.length ? rows.map((r) => `
+    <tr>
+      <td>${r.thumbnail_url ? `<img class="thumb" src="${r.thumbnail_url}" />` : ''}</td>
+      <td>${r.brandName}</td>
+      <td>${(r.creative_body || '').slice(0, 80)}</td>
+      <td>${r.duplicates}</td>
+      <td>${(r.totalReach || 0).toLocaleString('ru-RU')}</td>
+      <td>${r.score}</td>
+      <td><a class="card__link" href="${r.snapshot_url}" target="_blank" rel="noopener">Открыть ↗</a></td>
+    </tr>`).join('') : '<tr><td colspan="7" class="empty-note">Пока нет активных креативов с дублями — собери снепшоты по брендам.</td></tr>';
+}
 
 $('#add-brand-btn').addEventListener('click', () => $('#add-brand-dialog').showModal());
 $all('[data-close]').forEach((b) => b.addEventListener('click', (e) => e.target.closest('dialog').close()));
@@ -206,7 +235,8 @@ $('#add-page-form').addEventListener('submit', async (e) => {
 $('#refresh-brand-btn').addEventListener('click', async () => {
   $('#refresh-brand-btn').textContent = 'Собираю...';
   try {
-    await fetch(`/api/brands/${currentBrandId}/refresh`, { method: 'POST' });
+    const days = $('#collect-period').value;
+    await fetch(`/api/brands/${currentBrandId}/refresh?days=${days}`, { method: 'POST' });
     await loadTab($('.tab.is-active').dataset.tab);
   } finally {
     $('#refresh-brand-btn').textContent = '↻ Обновить сейчас';

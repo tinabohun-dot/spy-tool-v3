@@ -27,26 +27,6 @@
       <button class="side-nav__item" data-view="jobs">Сбор данных</button>
       <button class="side-nav__item" data-view="analytics">Аналитика</button>
     </nav>
-
-    <form id="search-form" class="filters" hidden>
-      <label class="field">
-        <span class="field__label">Бренд или ключевое слово</span>
-        <input type="text" id="q" name="q" placeholder="например, Nike" autocomplete="off" required />
-      </label>
-      <label class="field">
-        <span class="field__label">Страны показа</span>
-        <input type="text" id="countries" name="countries" placeholder="US, GB, DE" value="US" autocomplete="off" />
-      </label>
-      <fieldset class="field">
-        <legend class="field__label">Статус</legend>
-        <div class="radio-row">
-          <label class="radio"><input type="radio" name="status" value="ACTIVE" checked /> Активные</label>
-          <label class="radio"><input type="radio" name="status" value="INACTIVE" /> Завершённые</label>
-          <label class="radio"><input type="radio" name="status" value="ALL" /> Все</label>
-        </div>
-      </fieldset>
-      <button type="submit" class="btn btn--primary">Искать креативы</button>
-    </form>
   </aside>
 
   <main class="content">
@@ -66,9 +46,9 @@
 
       <div class="library-controls">
         <div class="tab-pills">
-          <span class="tab-pill is-disabled" title="Скоро">Scaling</span>
+          <button type="button" class="tab-pill" id="scaling-pill">Scaling</button>
           <span class="tab-pill is-disabled" title="Скоро">Top EU Reach</span>
-          <span class="tab-pill is-active" id="tracked-count-pill">Tracked (0)</span>
+          <button type="button" class="tab-pill is-active" id="tracked-count-pill">Tracked (0)</button>
         </div>
         <select id="category-filter" class="category-select">
           <option value="">Все категории</option>
@@ -76,6 +56,16 @@
       </div>
 
       <div id="brands-grid" class="grid grid--brands"></div>
+
+      <div id="scaling-view" class="table-scroll" hidden>
+        <p class="hint">Активные сейчас креативы по всем отслеживаемым брендам — с наибольшим числом дублей (масштабируется у конкурента) и охватом.</p>
+        <table class="table">
+          <thead>
+            <tr><th>Превью</th><th>Бренд</th><th>Креатив</th><th>Дублей</th><th>Reach</th><th>Score</th><th></th></tr>
+          </thead>
+          <tbody id="scaling-tbody"></tbody>
+        </table>
+      </div>
     </section>
 
     <!-- ===== Карточка бренда ===== -->
@@ -90,6 +80,11 @@
       <div class="brand-actions">
         <button id="add-page-btn" class="btn btn--ghost">+ Добавить Ad Page</button>
         <button id="refresh-brand-btn" class="btn btn--ghost">↻ Обновить сейчас</button>
+        <select id="collect-period" class="select" title="Собирать новые объявления за этот период (активные — всегда, независимо от даты старта)">
+          <option value="7">За последние 7 дней</option>
+          <option value="30">За последние 30 дней</option>
+          <option value="60">За последние 60 дней</option>
+        </select>
       </div>
       <div id="brand-pages" class="pages-row"></div>
 
@@ -201,7 +196,32 @@
     <!-- ===== Быстрый поиск (без сохранения истории) ===== -->
     <section id="view-search" class="view" hidden>
       <div class="view__header">
-        <h1 id="results-title">Введите бренд слева, чтобы начать</h1>
+        <h1>Быстрый поиск</h1>
+        <p class="view__sub">Ищем прямо по официальной Meta Ad Library, без сохранения в базу.</p>
+      </div>
+
+      <form id="search-form" class="analytics-filters">
+        <label class="field">
+          <span class="field__label">Бренд или ключевое слово</span>
+          <input type="text" id="q" name="q" placeholder="например, Nike" autocomplete="off" required />
+        </label>
+        <label class="field">
+          <span class="field__label">Страны показа</span>
+          <input type="text" id="countries" name="countries" placeholder="US, GB, DE" value="US" autocomplete="off" />
+        </label>
+        <fieldset class="field">
+          <legend class="field__label">Статус</legend>
+          <div class="radio-row">
+            <label class="radio"><input type="radio" name="status" value="ACTIVE" checked /> Активные</label>
+            <label class="radio"><input type="radio" name="status" value="INACTIVE" /> Завершённые</label>
+            <label class="radio"><input type="radio" name="status" value="ALL" /> Все</label>
+          </div>
+        </fieldset>
+        <button type="submit" class="btn btn--primary">Искать креативы</button>
+      </form>
+
+      <div id="results-title-row" class="view__header">
+        <h1 id="results-title"></h1>
         <p id="results-sub" class="view__sub"></p>
       </div>
       <div id="results-status" class="status-line"></div>

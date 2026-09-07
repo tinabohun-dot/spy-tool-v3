@@ -56,6 +56,8 @@ app.post('/api/saved', (req, res) => {
 });
 app.delete('/api/saved/:id', (req, res) => res.json(storage.remove(req.params.id)));
 
+app.get('/api/scaling', (req, res) => res.json(analytics.scalingCreatives()));
+
 app.get('/api/brands', (req, res) => {
   const brands = db.prepare('SELECT * FROM brands ORDER BY created_at DESC').all();
   const pages = db.prepare('SELECT * FROM ad_pages').all();
@@ -108,11 +110,12 @@ app.post('/api/brands/:brandId/pages', async (req, res) => {
 app.delete('/api/pages/:id', (req, res) => { db.prepare('DELETE FROM ad_pages WHERE id = ?').run(req.params.id); res.json({ ok: true }); });
 
 app.post('/api/brands/:brandId/refresh', async (req, res) => {
+  const days = +req.query.days || 7;
   const pages = db.prepare('SELECT * FROM ad_pages WHERE brand_id = ?').all(req.params.brandId);
   const results = [];
   for (const p of pages) {
     try {
-      results.push({ page_id: p.page_id, page_name: p.page_name, ...(await fetchSnapshotForAdPage(p)) });
+      results.push({ page_id: p.page_id, page_name: p.page_name, ...(await fetchSnapshotForAdPage(p, days)) });
     } catch (err) {
       console.error(`Сбор снепшота не удался для page_id=${p.page_id} (${p.page_name}):`, err.message);
       results.push({ page_id: p.page_id, page_name: p.page_name, error: err.message });
@@ -277,7 +280,8 @@ app.get('/api/analytics/users', async (req, res) => {
 app.post('/api/pages/:pageId/refresh', (req, res) => {
   const page = db.prepare('SELECT * FROM ad_pages WHERE id = ?').get(req.params.pageId);
   if (!page) return res.status(404).json({ error: 'Ad Page не найдена' });
-  fetchSnapshotForAdPage(page).catch((e) => console.error(`Сбор не удался для page_id=${page.page_id}:`, e.message));
+  const days = +req.query.days || 7;
+  fetchSnapshotForAdPage(page, days).catch((e) => console.error(`Сбор не удался для page_id=${page.page_id}:`, e.message));
   res.json({ ok: true });
 });
 

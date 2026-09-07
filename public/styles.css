@@ -160,7 +160,8 @@ dialog::backdrop { background: rgba(0,0,0,.3); }
 
 .library-controls { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
 .tab-pills { display: flex; gap: 6px; background: #eeeeec; border-radius: 999px; padding: 4px; }
-.tab-pill { padding: 8px 16px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--muted); cursor: default; }
+.tab-pill { padding: 8px 16px; border-radius: 999px; font-size: 14px; font-weight: 600; color: var(--muted); cursor: default; border: none; background: none; font-family: inherit; }
+button.tab-pill:not(.is-disabled) { cursor: pointer; }
 .tab-pill.is-active { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 .tab-pill.is-disabled { opacity: .5; }
 
@@ -236,7 +237,7 @@ dialog::backdrop { background: rgba(0,0,0,.3); }
 .analytics-table th:hover { color: var(--ink); }
 .analytics-table th.is-sorted::after { content: ' \25BE'; }
 .analytics-table td { font-variant-numeric: tabular-nums; }
-.analytics-table .thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; display: block; }
+.thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; display: block; }
 .analytics-table__name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .grade-row--Alpha { background: #c8e6c920; }
 .grade-row--Scale { background: #bbdefb20; }
