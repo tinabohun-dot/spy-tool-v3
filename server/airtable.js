@@ -67,6 +67,7 @@ async function loadTasks() {
       creoType: f['Creo Type'] === 'V' ? 'Video' : f['Creo Type'] === 'S' ? 'Static' : (f['Creo Type'] || null),
       cp: f['CP'] || null,
       designer: f['Designer'] || null,
+      funnel: (f['Funnel'] || [])[0] || null,
       status: f['Status'] || null,
       created: f['Created'] || null,
       whenInProgress: pick(f, whenMap, 'In Progress'),
@@ -86,81 +87,128 @@ function inRange(dateStr, since, until) {
   return day >= since && day <= until;
 }
 
-// Вкладка "Продакшн": сколько задач дошло до "To Test" за период, видео/статика,
-// и отдельная разбивка по дизайнерам.
-async function productionReport(since, until) {
+function previousEquivalentPeriod(since, until) {
+  const DAY = 86400000;
+  const sinceDate = new Date(since + 'T00:00:00');
+  const untilDate = new Date(until + 'T00:00:00');
+  const lengthDays = Math.round((untilDate - sinceDate) / DAY) + 1;
+  const prevUntilDate = new Date(sinceDate.getTime() - DAY);
+  const prevSinceDate = new Date(prevUntilDate.getTime() - (lengthDays - 1) * DAY);
+  return { since: prevSinceDate.toISOString().slice(0, 10), until: prevUntilDate.toISOString().slice(0, 10) };
+}
+
+// Вкладка "Продакшн": сколько задач дошло до "To Test" за период — по дням,
+// видео/статика, разбивка по дизайнерам и воронкам, % к предыдущему периоду
+// такой же длины, и сколько из произведённого реально "напущено" в Meta
+// (Task ID встречается среди реальных объявлений в аккаунтах).
+async function productionReport(since, until, launchedTaskNumbers) {
   const { tasks } = await loadTasks();
   const inWindow = tasks.filter((t) => inRange(t.whenToTest, since, until));
+
+  const byDay = {};
   const byDesigner = {};
-  let video = 0; let staticCount = 0;
+  const byFunnel = {};
+  let video = 0; let staticCount = 0; let launched = 0;
+
   for (const t of inWindow) {
+    const day = t.whenToTest.slice(0, 10);
+    byDay[day] = (byDay[day] || 0) + 1;
+
     if (t.creoType === 'Video') video++; else if (t.creoType === 'Static') staticCount++;
+
     const d = t.designer || '—';
-    if (!byDesigner[d]) byDesigner[d] = { designer: d, total: 0, video: 0, static: 0 };
-    byDesigner[d].total++;
-    if (t.creoType === 'Video') byDesigner[d].video++; else if (t.creoType === 'Static') byDesigner[d].static++;
+    byDesigner[d] = (byDesigner[d] || 0) + 1;
+
+    const funnel = t.funnel || '—';
+    byFunnel[funnel] = (byFunnel[funnel] || 0) + 1;
+
+    if (launchedTaskNumbers && t.taskId != null && launchedTaskNumbers.has(String(t.taskId))) launched++;
   }
+
+  const prevPeriod = previousEquivalentPeriod(since, until);
+  const prevTotal = tasks.filter((t) => inRange(t.whenToTest, prevPeriod.since, prevPeriod.until)).length;
+  const pctChange = prevTotal ? Math.round(((inWindow.length - prevTotal) / prevTotal) * 100) : null;
+
   return {
     total: inWindow.length,
+    prevTotal,
+    pctChange,
     video,
     static: staticCount,
-    byDesigner: Object.values(byDesigner).sort((a, b) => b.total - a.total)
+    launched,
+    notLaunched: inWindow.length - launched,
+    byDay: Object.entries(byDay).map(([day, count]) => ({ day, count })).sort((a, b) => a.day.localeCompare(b.day)),
+    byDesigner: Object.fromEntries(Object.entries(byDesigner).sort((a, b) => b[1] - a[1])),
+    byFunnel: Object.fromEntries(Object.entries(byFunnel).sort((a, b) => b[1] - a[1]))
   };
 }
 
-// Вкладка "CP": сколько задач перевели в "To Do" по дням, видео/статика,
-// и разбивка по тому, кто из CP поставил задачу.
+// Вкладка "CP": сколько задач CP поставили в очередь (перевели в "To Do") по
+// дням, видео/статика, разбивка по тому, какой CP поставил задачу. Не
+// зависит от Design/UA — отдельная метрика по своей дате.
 async function cpReport(since, until) {
   const { tasks } = await loadTasks();
   const inWindow = tasks.filter((t) => inRange(t.whenToDo, since, until));
+
   const byDay = {};
   const byCp = {};
   let video = 0; let staticCount = 0;
+
   for (const t of inWindow) {
     const day = t.whenToDo.slice(0, 10);
     byDay[day] = (byDay[day] || 0) + 1;
+    if (t.creoType === 'Video') video++; else if (t.creoType === 'Static') staticCount++;
     const cp = t.cp || '—';
-    if (!byCp[cp]) byCp[cp] = { cp, total: 0, video: 0, static: 0 };
-    byCp[cp].total++;
-    if (t.creoType === 'Video') { byCp[cp].video++; video++; }
-    else if (t.creoType === 'Static') { byCp[cp].static++; staticCount++; }
+    byCp[cp] = (byCp[cp] || 0) + 1;
   }
+
+  const prevPeriod = previousEquivalentPeriod(since, until);
+  const prevTotal = tasks.filter((t) => inRange(t.whenToDo, prevPeriod.since, prevPeriod.until)).length;
+  const pctChange = prevTotal ? Math.round(((inWindow.length - prevTotal) / prevTotal) * 100) : null;
+
   return {
     total: inWindow.length,
+    prevTotal,
+    pctChange,
     video,
     static: staticCount,
     byDay: Object.entries(byDay).map(([day, count]) => ({ day, count })).sort((a, b) => a.day.localeCompare(b.day)),
-    byCp: Object.values(byCp).sort((a, b) => b.total - a.total)
+    byCp: Object.fromEntries(Object.entries(byCp).sort((a, b) => b[1] - a[1]))
   };
 }
 
-// Вкладка "Утилизация": сколько задач вошло в "To Test" за период, сколько из
-// них уже дошло до "Sent UA" (и за сколько часов), сколько ещё висит.
-// Важно: поле "When Sent UA" только что подключено — для задач ДО его
-// включения completed будет 0 даже если они реально давно отправлены,
-// это ограничение данных, а не баг.
-async function utilizationReport(since, until) {
+// Вкладка "UA": сколько задач UA запустили (перевели в "Sent UA") по дням,
+// видео/статика, разбивка по CP. Отдельная метрика по своей дате — не
+// показывает время ожидания между статусами, только объём запусков.
+async function uaReport(since, until) {
   const { tasks } = await loadTasks();
-  const enteredToTest = tasks.filter((t) => inRange(t.whenToTest, since, until));
-  const completed = enteredToTest.filter((t) => t.whenSentUA);
-  const pending = enteredToTest.filter((t) => !t.whenSentUA);
-  const durationsHours = completed
-    .map((t) => (new Date(t.whenSentUA) - new Date(t.whenToTest)) / 3600000)
-    .filter((h) => Number.isFinite(h) && h >= 0)
-    .sort((a, b) => a - b);
-  const avgHours = durationsHours.length ? durationsHours.reduce((s, h) => s + h, 0) / durationsHours.length : null;
-  const medianHours = durationsHours.length ? durationsHours[Math.floor(durationsHours.length / 2)] : null;
+  const inWindow = tasks.filter((t) => inRange(t.whenSentUA, since, until));
+
+  const byDay = {};
+  const byCp = {};
+  let video = 0; let staticCount = 0;
+
+  for (const t of inWindow) {
+    const day = t.whenSentUA.slice(0, 10);
+    byDay[day] = (byDay[day] || 0) + 1;
+    if (t.creoType === 'Video') video++; else if (t.creoType === 'Static') staticCount++;
+    const cp = t.cp || '—';
+    byCp[cp] = (byCp[cp] || 0) + 1;
+  }
+
+  const prevPeriod = previousEquivalentPeriod(since, until);
+  const prevTotal = tasks.filter((t) => inRange(t.whenSentUA, prevPeriod.since, prevPeriod.until)).length;
+  const pctChange = prevTotal ? Math.round(((inWindow.length - prevTotal) / prevTotal) * 100) : null;
 
   return {
-    enteredToTest: enteredToTest.length,
-    completed: completed.length,
-    pending: pending.length,
-    avgHours,
-    medianHours,
-    pendingTasks: pending.map((t) => ({
-      taskId: t.taskId, taskName: t.taskName, whenToTest: t.whenToTest, designer: t.designer, cp: t.cp
-    }))
+    total: inWindow.length,
+    prevTotal,
+    pctChange,
+    video,
+    static: staticCount,
+    byDay: Object.entries(byDay).map(([day, count]) => ({ day, count })).sort((a, b) => a.day.localeCompare(b.day)),
+    byCp: Object.fromEntries(Object.entries(byCp).sort((a, b) => b[1] - a[1]))
   };
 }
 
-module.exports = { loadTasks, inRange, productionReport, cpReport, utilizationReport };
+module.exports = { loadTasks, inRange, productionReport, cpReport, uaReport };

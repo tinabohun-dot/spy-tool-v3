@@ -528,6 +528,7 @@ let analyticsData = null;
 let analyticsAccountFilter = 'all';
 let analyticsGradeFilter = '';
 let analyticsTypeFilter = '';
+let analyticsFunnelFilter = '';
 let analyticsNameFilter = '';
 let analyticsSort = { key: 'spend', dir: 'desc' };
 let analyticsVisibleCreatives = [];
@@ -555,7 +556,7 @@ function loadActiveSubtab() {
   if (analyticsSubtab === 'creatives') return loadAnalytics(since, until);
   if (analyticsSubtab === 'production') return loadProduction(since, until);
   if (analyticsSubtab === 'cp') return loadCp(since, until);
-  if (analyticsSubtab === 'utilization') return loadUtilization(since, until);
+  if (analyticsSubtab === 'ua') return loadUa(since, until);
 }
 
 $('#analytics-subtabs').addEventListener('click', (e) => {
@@ -594,10 +595,20 @@ async function loadAnalytics(since, until) {
     analyticsData = data;
     analyticsAccountFilter = 'all';
     renderAnalyticsChips();
+    populateFunnelFilter();
     renderAnalyticsView();
   } catch (err) {
     $('#analytics-status').textContent = 'Ошибка: ' + err.message;
   }
+}
+
+function populateFunnelFilter() {
+  const funnels = [...new Set(analyticsData.overall.creatives.map((c) => c.funnel || '—'))].sort();
+  const select = $('#analytics-funnel-filter');
+  const current = select.value;
+  select.innerHTML = '<option value="">Все воронки</option>' + funnels.map((f) => `<option value="${f}">${f}</option>`).join('');
+  select.value = funnels.includes(current) ? current : '';
+  analyticsFunnelFilter = select.value;
 }
 
 function money(n) {
@@ -628,6 +639,7 @@ $('#analytics-account-chips').addEventListener('click', (e) => {
 
 $('#analytics-grade-filter').addEventListener('change', (e) => { analyticsGradeFilter = e.target.value; renderAnalyticsView(); });
 $('#analytics-type-filter').addEventListener('change', (e) => { analyticsTypeFilter = e.target.value; renderAnalyticsView(); });
+$('#analytics-funnel-filter').addEventListener('change', (e) => { analyticsFunnelFilter = e.target.value; renderAnalyticsView(); });
 $('#analytics-name-filter').addEventListener('input', (e) => { analyticsNameFilter = e.target.value.toLowerCase(); renderAnalyticsView(); });
 
 $('#analytics-table thead').addEventListener('click', (e) => {
@@ -670,8 +682,8 @@ function renderAnalyticsRow(c) {
       <td>${c.previewUrl ? `<img class="thumb" src="${c.previewUrl}" />` : ''}</td>
       <td class="analytics-table__name" title="${c.name}">${c.name}</td>
       <td>${c.type}</td>
-      <td>${renderStatusBadge(c)}</td>
       <td><span class="grade-badge" style="background:${badge.bg};color:${badge.color}">${c.grade}</span></td>
+      <td>${c.funnel || '—'}</td>
       <td>${money(c.spend)}</td>
       <td>${c.purchases}</td>
       <td>${c.cpa ? '$' + c.cpa.toFixed(2) : '—'}</td>
@@ -699,6 +711,7 @@ function renderAnalyticsRow(c) {
       <td>${c.mergedCount > 1 ? '×' + c.mergedCount : '—'}</td>
       <td>${(c.accounts || []).join(' / ')}</td>
       <td>${c.campaignName}</td>
+      <td>${renderStatusBadge(c)}</td>
     </tr>`;
 }
 
@@ -713,25 +726,40 @@ function renderAnalyticsView() {
   let creatives = source.creatives.filter((c) => {
     if (analyticsGradeFilter && c.grade !== analyticsGradeFilter) return false;
     if (analyticsTypeFilter && c.type !== analyticsTypeFilter) return false;
+    if (analyticsFunnelFilter && (c.funnel || '—') !== analyticsFunnelFilter) return false;
     if (analyticsNameFilter && !c.name.toLowerCase().includes(analyticsNameFilter)) return false;
     return true;
   });
 
   const { key, dir } = analyticsSort;
+  const GRADE_RANK = { 'Alpha': 5, 'Scale': 4, 'Test': 3, 'Promising': 2, 'Bad': 1, 'No purchases': 0 };
   creatives = [...creatives].sort((a, b) => {
-    const av = a[key]; const bv = b[key];
     let cmp;
-    if (typeof av === 'string' || typeof bv === 'string') cmp = String(av ?? '').localeCompare(String(bv ?? ''));
-    else cmp = (av ?? -Infinity) - (bv ?? -Infinity);
+    if (key === 'grade') {
+      cmp = (GRADE_RANK[a.grade] ?? -1) - (GRADE_RANK[b.grade] ?? -1);
+    } else {
+      const av = a[key]; const bv = b[key];
+      if (typeof av === 'string' || typeof bv === 'string') cmp = String(av ?? '').localeCompare(String(bv ?? ''));
+      else cmp = (av ?? -Infinity) - (bv ?? -Infinity);
+    }
     return dir === 'asc' ? cmp : -cmp;
   });
 
   $all('#analytics-table th[data-sort]').forEach((th) => th.classList.toggle('is-sorted', th.dataset.sort === key));
   $('#analytics-tbody').innerHTML = creatives.length
     ? creatives.map(renderAnalyticsRow).join('')
-    : '<tr><td colspan="33" class="empty-note">Нет данных по выбранным фильтрам.</td></tr>';
+    : '<tr><td colspan="34" class="empty-note">Нет данных по выбранным фильтрам.</td></tr>';
 
   analyticsVisibleCreatives = creatives;
+  syncAnalyticsStickyOffset();
+}
+
+function syncAnalyticsStickyOffset() {
+  const wrapper = $('#analytics-sticky-top');
+  if (!wrapper) return;
+  requestAnimationFrame(() => {
+    document.documentElement.style.setProperty('--analytics-sticky-offset', wrapper.getBoundingClientRect().height + 'px');
+  });
 }
 
 const ANALYTICS_CSV_COLUMNS = [
@@ -739,6 +767,7 @@ const ANALYTICS_CSV_COLUMNS = [
   ['Тип', (c) => c.type],
   ['Активных копий', (c) => `${c.activeCount ?? 0}/${c.totalCount ?? 1}`],
   ['Grade', (c) => c.grade],
+  ['Funnel', (c) => c.funnel || ''],
   ['Spend', (c) => c.spend],
   ['Purchases', (c) => c.purchases],
   ['CPA', (c) => c.cpa ?? ''],
@@ -797,21 +826,70 @@ async function fetchJson(url) {
   return data;
 }
 
+function renderGenericStackedBar(barSel, legendSel, segments) {
+  const total = segments.reduce((s, seg) => s + seg.value, 0) || 1;
+  $(barSel).innerHTML = segments
+    .filter((s) => s.value > 0)
+    .map((s) => `<span class="stacked-bar__seg" style="width:${(s.value / total) * 100}%;background:${s.color}"></span>`)
+    .join('');
+  $(legendSel).innerHTML = segments
+    .map((s) => `<span><span class="stacked-bar__dot" style="background:${s.color}"></span>${s.label} ${Math.round((s.value / total) * 100)}%</span>`)
+    .join('');
+}
+
 async function loadProduction(since, until) {
   $('#analytics-status').textContent = 'Загружаю...';
   try {
     const data = await fetchJson(`/api/analytics/production?${new URLSearchParams({ since, until })}`);
     $('#analytics-status').textContent = '';
-    $('#production-summary').innerHTML = `
-      <div class="panel-card"><h3>Всего дошло до To Test</h3><p class="big-number">${data.total}</p></div>
-      <div class="panel-card"><h3>Video</h3><p class="big-number">${data.video}</p></div>
-      <div class="panel-card"><h3>Static</h3><p class="big-number">${data.static}</p></div>`;
-    $('#production-tbody').innerHTML = data.byDesigner.length
-      ? data.byDesigner.map((d) => `<tr><td>${d.designer}</td><td>${d.total}</td><td>${d.video}</td><td>${d.static}</td></tr>`).join('')
-      : '<tr><td colspan="4" class="empty-note">Нет данных за период.</td></tr>';
+
+    const pctHtml = data.pctChange === null ? ''
+      : `<span class="big-number__pct ${data.pctChange >= 0 ? 'big-number__pct--up' : 'big-number__pct--down'}">${data.pctChange >= 0 ? '↗' : '↘'}${data.pctChange}%</span>`;
+    $('#production-number').innerHTML = `${data.total}${pctHtml}`;
+
+    destroyChart('productionByDay');
+    charts.productionByDay = new Chart($('#chart-production-by-day'), {
+      type: 'line',
+      data: { labels: data.byDay.map((d) => d.day), datasets: [{ label: 'Задач', data: data.byDay.map((d) => d.count), borderColor: '#d95f2b', tension: 0.3 }] },
+      options: { plugins: { legend: { display: false } } }
+    });
+
+    renderGenericStackedBar('#production-launched-bar', '#production-launched-legend', [
+      { label: 'Напущено', value: data.launched, color: '#2ea56f' },
+      { label: 'Ещё нет', value: data.notLaunched, color: '#c9c9c4' }
+    ]);
+
+    renderBarList('#production-designer-bars', data.byDesigner);
+    renderBarList('#production-funnel-bars', data.byFunnel);
   } catch (err) {
     $('#analytics-status').textContent = 'Ошибка: ' + err.message;
   }
+}
+
+function renderPctBigNumber(sel, total, pctChange) {
+  const pctHtml = pctChange === null ? ''
+    : `<span class="big-number__pct ${pctChange >= 0 ? 'big-number__pct--up' : 'big-number__pct--down'}">${pctChange >= 0 ? '↗' : '↘'}${pctChange}%</span>`;
+  $(sel).innerHTML = `${total}${pctHtml}`;
+}
+
+// Общий рендер для CP и UA — обе метрики устроены одинаково (день/CP/формат),
+// просто по разным полям-датам, поэтому и делаем не мешая друг другу.
+function renderDailyReport(prefix, data) {
+  renderPctBigNumber(`#${prefix}-number`, data.total, data.pctChange);
+
+  destroyChart(prefix + 'ByDay');
+  charts[prefix + 'ByDay'] = new Chart($(`#chart-${prefix}-by-day`), {
+    type: 'bar',
+    data: { labels: data.byDay.map((d) => d.day), datasets: [{ label: 'Задач', data: data.byDay.map((d) => d.count), backgroundColor: '#d95f2b' }] },
+    options: { plugins: { legend: { display: false } } }
+  });
+
+  renderGenericStackedBar(`#${prefix}-format-bar`, `#${prefix}-format-legend`, [
+    { label: 'Video', value: data.video, color: '#2ea56f' },
+    { label: 'Static', value: data.static, color: '#d95f2b' }
+  ]);
+
+  renderBarList(`#${prefix}-bars`, data.byCp);
 }
 
 async function loadCp(since, until) {
@@ -819,39 +897,18 @@ async function loadCp(since, until) {
   try {
     const data = await fetchJson(`/api/analytics/cp?${new URLSearchParams({ since, until })}`);
     $('#analytics-status').textContent = '';
-    $('#cp-summary').innerHTML = `
-      <div class="panel-card"><h3>Всего в To Do</h3><p class="big-number">${data.total}</p></div>
-      <div class="panel-card"><h3>Video</h3><p class="big-number">${data.video}</p></div>
-      <div class="panel-card"><h3>Static</h3><p class="big-number">${data.static}</p></div>`;
-    $('#cp-tbody').innerHTML = data.byCp.length
-      ? data.byCp.map((c) => `<tr><td>${c.cp}</td><td>${c.total}</td><td>${c.video}</td><td>${c.static}</td></tr>`).join('')
-      : '<tr><td colspan="4" class="empty-note">Нет данных за период.</td></tr>';
-
-    destroyChart('cpByDay');
-    charts.cpByDay = new Chart($('#chart-cp-by-day'), {
-      type: 'bar',
-      data: { labels: data.byDay.map((d) => d.day), datasets: [{ label: 'Задач в To Do', data: data.byDay.map((d) => d.count), backgroundColor: '#d95f2b' }] },
-      options: { plugins: { legend: { display: false } } }
-    });
+    renderDailyReport('cp', data);
   } catch (err) {
     $('#analytics-status').textContent = 'Ошибка: ' + err.message;
   }
 }
 
-async function loadUtilization(since, until) {
+async function loadUa(since, until) {
   $('#analytics-status').textContent = 'Загружаю...';
   try {
-    const data = await fetchJson(`/api/analytics/utilization?${new URLSearchParams({ since, until })}`);
+    const data = await fetchJson(`/api/analytics/ua?${new URLSearchParams({ since, until })}`);
     $('#analytics-status').textContent = '';
-    const fmtHours = (h) => h == null ? '—' : h < 24 ? `${h.toFixed(1)} ч` : `${(h / 24).toFixed(1)} дн`;
-    $('#utilization-summary').innerHTML = `
-      <div class="panel-card"><h3>Вошло в To Test</h3><p class="big-number">${data.enteredToTest}</p></div>
-      <div class="panel-card"><h3>Дошло до Sent UA</h3><p class="big-number">${data.completed}</p></div>
-      <div class="panel-card"><h3>Ещё не переведено</h3><p class="big-number">${data.pending}</p></div>
-      <div class="panel-card"><h3>Среднее время</h3><p class="big-number">${fmtHours(data.avgHours)}</p><p class="hint">медиана: ${fmtHours(data.medianHours)}</p></div>`;
-    $('#utilization-tbody').innerHTML = data.pendingTasks.length
-      ? data.pendingTasks.map((t) => `<tr><td>${t.taskName}</td><td>${t.whenToTest}</td><td>${t.designer || '—'}</td><td>${t.cp || '—'}</td></tr>`).join('')
-      : '<tr><td colspan="4" class="empty-note">Все задачи из периода уже переведены в Sent UA.</td></tr>';
+    renderDailyReport('ua', data);
   } catch (err) {
     $('#analytics-status').textContent = 'Ошибка: ' + err.message;
   }

@@ -72,6 +72,67 @@ async function fetchAccountInsights(accountId, since, until) {
   return paginate(url.toString());
 }
 
+// Разбивка на уровне аккаунта (не по объявлениям) — для платформ/демографии
+// не нужна детализация по каждому крео, только агрегат за период.
+async function fetchAccountBreakdown(accountId, since, until, breakdowns) {
+  const url = new URL(`https://graph.facebook.com/${API_VERSION}/${accountId}/insights`);
+  url.searchParams.set('fields', 'impressions,reach,spend');
+  url.searchParams.set('time_range', JSON.stringify({ since, until }));
+  url.searchParams.set('level', 'account');
+  if (breakdowns?.length) url.searchParams.set('breakdowns', breakdowns.join(','));
+  url.searchParams.set('limit', '500');
+  url.searchParams.set('access_token', token());
+  return paginate(url.toString());
+}
+
+// Платформы (facebook/instagram/audience_network/...) по всем аккаунтам —
+// сумма impressions за период.
+async function fetchPlatformBreakdown(since, until) {
+  const accs = accounts();
+  const platform = {};
+  for (const accId of Object.values(accs)) {
+    const rows = await fetchAccountBreakdown(accId, since, until, ['publisher_platform']);
+    for (const r of rows) {
+      if (!r.publisher_platform) continue;
+      platform[r.publisher_platform] = (platform[r.publisher_platform] || 0) + parseInt(r.impressions || 0, 10);
+    }
+  }
+  return platform;
+}
+
+// Демография по всем аккаунтам, без ограничения по Европе (в отличие от
+// EU Reach у Ad Library) — пол/возраст/страна + суммарный охват аккаунтов.
+// Важно: reach по разбивкам не складывается в точный уникальный охват
+// (один и тот же человек может попасть в несколько сегментов) — это тот же
+// приближённый подход, что и в EU Reach.
+async function fetchDemographics(since, until) {
+  const accs = accounts();
+  const gender = {};
+  const age = {};
+  const countries = {};
+  let totalReach = 0;
+
+  for (const accId of Object.values(accs)) {
+    const totals = await fetchAccountBreakdown(accId, since, until, []);
+    totalReach += totals.reduce((s, r) => s + (parseInt(r.reach || 0, 10)), 0);
+
+    const ageGenderRows = await fetchAccountBreakdown(accId, since, until, ['age', 'gender']);
+    for (const r of ageGenderRows) {
+      const reach = parseInt(r.reach || 0, 10);
+      if (r.gender && r.gender !== 'unknown') gender[r.gender] = (gender[r.gender] || 0) + reach;
+      if (r.age) age[r.age] = (age[r.age] || 0) + reach;
+    }
+
+    const countryRows = await fetchAccountBreakdown(accId, since, until, ['country']);
+    for (const r of countryRows) {
+      if (!r.country) continue;
+      countries[r.country] = (countries[r.country] || 0) + parseInt(r.reach || 0, 10);
+    }
+  }
+
+  return { totalReach, gender, age, countries };
+}
+
 async function fetchAllAccountsInsights(since, until) {
   const accs = accounts();
   const rows = [];
@@ -80,6 +141,40 @@ async function fetchAllAccountsInsights(since, until) {
     for (const r of accRows) { r._accountName = accName; rows.push(r); }
   }
   return rows;
+}
+
+// Список ad name по всем аккаунтам, без фильтра по дате — чтобы понять, какие
+// Task ID из Airtable вообще когда-либо доходили до реального запуска в Meta
+// (level=ad + /ads возвращает объявления в любом статусе за всё время, в
+// отличие от /insights, которому обязательно нужен диапазон дат).
+async function fetchAllAdNamesEver() {
+  const accs = accounts();
+  const names = [];
+  for (const accId of Object.values(accs)) {
+    const url = new URL(`https://graph.facebook.com/${API_VERSION}/${accId}/ads`);
+    url.searchParams.set('fields', 'name');
+    url.searchParams.set('limit', '500');
+    url.searchParams.set('access_token', token());
+    const ads = await paginate(url.toString());
+    for (const ad of ads) if (ad.name) names.push(ad.name);
+  }
+  return names;
+}
+
+let launchedTaskNumbersCache = null; // { at, set }
+const LAUNCHED_CACHE_TTL_MS = 5 * 60 * 1000;
+async function fetchLaunchedTaskNumbers() {
+  if (launchedTaskNumbersCache && Date.now() - launchedTaskNumbersCache.at < LAUNCHED_CACHE_TTL_MS) {
+    return launchedTaskNumbersCache.set;
+  }
+  const names = await fetchAllAdNamesEver();
+  const set = new Set();
+  for (const name of names) {
+    const m = name.match(/^(\d+)/);
+    if (m) set.add(m[1]);
+  }
+  launchedTaskNumbersCache = { at: Date.now(), set };
+  return set;
 }
 
 function getAction(actions, type) {
@@ -188,6 +283,20 @@ function groupRowsByCreative(allRows) {
   return order.map((k) => groups[k]);
 }
 
+// Воронка — по названию кампании (там зашит слаг вида "toddler-quiz-fl-v1",
+// "brain-activation-fl-v2" и т.п.), портировано один в один из личного
+// скрипта пользователя (getFunnelFromCampaign) — там это определялось корректно.
+function getFunnelFromCampaign(campaignName) {
+  if (!campaignName) return null;
+  const text = campaignName.toLowerCase();
+  if (/toddler-quiz/.test(text)) return 'Toddler';
+  if (/brain-activation/.test(text)) return 'Brain Activation';
+  if (/general-kids/.test(text)) return 'General';
+  if (/mix/.test(text)) return 'Mix';
+  if (/yelling/.test(text)) return 'Stop Yelling';
+  return 'Test';
+}
+
 function getGrade(purchases, cpa) {
   const cpaNum = (cpa === '' || cpa === null || cpa === undefined) ? Infinity : cpa;
   if (purchases === 0) return 'No purchases';
@@ -233,6 +342,7 @@ function buildCreativeEntry(row) {
     mergedCount: row._mergedCount || 1,
     accounts: row._accountNames || (row._accountName ? [row._accountName] : []),
     campaignName: row.campaign_name || '',
+    funnel: getFunnelFromCampaign(row.campaign_name),
     spend,
     impressions,
     reach,
@@ -327,5 +437,6 @@ async function attachPreviews(creatives) {
 
 module.exports = {
   accounts, fetchAllAccountsInsights, fetchAccountInsights,
-  groupRowsByCreative, buildCreativeEntry, summarize, attachPreviews
+  groupRowsByCreative, buildCreativeEntry, summarize, attachPreviews,
+  fetchLaunchedTaskNumbers, fetchPlatformBreakdown, fetchDemographics
 };

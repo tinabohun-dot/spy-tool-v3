@@ -180,6 +180,9 @@ app.get('/api/analytics', async (req, res) => {
       byAccount[accName] = { summary: metaMarketing.summarize(creatives), creatives };
     }
 
+    // Воронка уже определена в buildCreativeEntry по названию кампании
+    // (getFunnelFromCampaign) — так же, как в личном скрипте пользователя.
+
     res.json({
       accounts: accNames,
       overall: { summary: metaMarketing.summarize(overallCreatives), creatives: overallCreatives },
@@ -197,7 +200,8 @@ app.get('/api/analytics/production', async (req, res) => {
   try {
     const { since, until } = req.query;
     if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until' });
-    res.json(await airtable.productionReport(since, until));
+    const launchedTaskNumbers = await metaMarketing.fetchLaunchedTaskNumbers().catch(() => null);
+    res.json(await airtable.productionReport(since, until, launchedTaskNumbers));
   } catch (err) {
     console.error(err);
     res.status(err.status || 500).json({ error: err.message });
@@ -217,14 +221,13 @@ app.get('/api/analytics/cp', async (req, res) => {
   }
 });
 
-// Утилизация (Airtable): время между "To Test" и "Sent UA" + сколько ещё не
-// переведено. Данные по "Sent UA" копятся только с момента подключения
-// automation, поэтому за старые периоды completed может быть занижен.
-app.get('/api/analytics/utilization', async (req, res) => {
+// UA (Airtable): сколько задач запустили (перевели в "Sent UA") по дням.
+// Данные копятся только с момента подключения automation.
+app.get('/api/analytics/ua', async (req, res) => {
   try {
     const { since, until } = req.query;
     if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until' });
-    res.json(await airtable.utilizationReport(since, until));
+    res.json(await airtable.uaReport(since, until));
   } catch (err) {
     console.error(err);
     res.status(err.status || 500).json({ error: err.message });

@@ -234,12 +234,13 @@
 
       <div class="tabs" id="analytics-subtabs">
         <button type="button" class="tab is-active" data-subtab="creatives">Все креативы</button>
-        <button type="button" class="tab" data-subtab="production">Продакшн</button>
+        <button type="button" class="tab" data-subtab="production">Design</button>
         <button type="button" class="tab" data-subtab="cp">CP</button>
-        <button type="button" class="tab" data-subtab="utilization">Утилизация</button>
+        <button type="button" class="tab" data-subtab="ua">UA</button>
       </div>
 
       <div id="subtab-creatives" class="tab-panel is-active">
+        <div id="analytics-sticky-top" class="analytics-sticky-top">
         <div id="analytics-summary" class="panel-grid analytics-summary"></div>
 
         <div id="analytics-account-chips" class="pages-row"></div>
@@ -259,8 +260,12 @@
             <option value="Video">Video</option>
             <option value="Static">Static</option>
           </select>
+          <select id="analytics-funnel-filter" class="select">
+            <option value="">Все воронки</option>
+          </select>
           <input type="text" id="analytics-name-filter" class="select" placeholder="Поиск по названию" />
           <button type="button" id="analytics-download-btn" class="btn btn--ghost">⬇ Скачать CSV</button>
+        </div>
         </div>
 
         <div class="table-scroll">
@@ -270,8 +275,8 @@
                 <th>Превью</th>
                 <th data-sort="name">Название</th>
                 <th data-sort="type">Тип</th>
-                <th data-sort="activeCount">Статус</th>
                 <th data-sort="grade">Grade</th>
+                <th data-sort="funnel">Funnel</th>
                 <th data-sort="spend">Spend</th>
                 <th data-sort="purchases">Purchases</th>
                 <th data-sort="cpa">CPA</th>
@@ -299,6 +304,7 @@
                 <th data-sort="mergedCount">Копий</th>
                 <th>Аккаунты</th>
                 <th>Campaign</th>
+                <th data-sort="activeCount">Статус</th>
               </tr>
             </thead>
             <tbody id="analytics-tbody"></tbody>
@@ -307,35 +313,69 @@
       </div>
 
       <div id="subtab-production" class="tab-panel">
-        <p class="hint">Сколько задач дошло до статуса "To Test" за выбранный период (по дате из Airtable).</p>
-        <div id="production-summary" class="panel-grid analytics-summary"></div>
-        <table class="table" id="production-table">
-          <thead><tr><th>Дизайнер</th><th>Всего</th><th>Video</th><th>Static</th></tr></thead>
-          <tbody id="production-tbody"></tbody>
-        </table>
+        <div class="panel-grid">
+          <div class="panel-card">
+            <h3>Продакшн по дням</h3>
+            <p class="hint">Сколько задач дошло до "To Test" за выбранный период</p>
+            <p id="production-number" class="big-number">—</p>
+            <canvas id="chart-production-by-day"></canvas>
+          </div>
+          <div class="panel-card">
+            <h3>Напущено в Meta</h3>
+            <p class="hint">Из произведённого — сколько реально запущено рекламой (по Task ID)</p>
+            <div id="production-launched-bar" class="stacked-bar"></div>
+            <div id="production-launched-legend" class="stacked-bar__legend"></div>
+          </div>
+          <div class="panel-card">
+            <h3>По дизайнерам</h3>
+            <div id="production-designer-bars" class="bar-list"></div>
+          </div>
+          <div class="panel-card">
+            <h3>По воронкам</h3>
+            <div id="production-funnel-bars" class="bar-list"></div>
+          </div>
+        </div>
       </div>
 
       <div id="subtab-cp" class="tab-panel">
-        <p class="hint">Сколько задач перевели в статус "To Do" за выбранный период — по дням и по CP.</p>
-        <div id="cp-summary" class="panel-grid analytics-summary"></div>
-        <div class="panel-card">
-          <h3>По дням</h3>
-          <canvas id="chart-cp-by-day"></canvas>
+        <div class="panel-grid">
+          <div class="panel-card">
+            <h3>CP по дням</h3>
+            <p class="hint">Сколько задач CP поставили в очередь ("To Do") за выбранный период</p>
+            <p id="cp-number" class="big-number">—</p>
+            <canvas id="chart-cp-by-day"></canvas>
+          </div>
+          <div class="panel-card">
+            <h3>Формат</h3>
+            <div id="cp-format-bar" class="stacked-bar"></div>
+            <div id="cp-format-legend" class="stacked-bar__legend"></div>
+          </div>
+          <div class="panel-card">
+            <h3>По CP</h3>
+            <div id="cp-bars" class="bar-list"></div>
+          </div>
         </div>
-        <table class="table" id="cp-table">
-          <thead><tr><th>CP</th><th>Всего</th><th>Video</th><th>Static</th></tr></thead>
-          <tbody id="cp-tbody"></tbody>
-        </table>
       </div>
 
-      <div id="subtab-utilization" class="tab-panel">
-        <p class="hint">Время от "To Test" до "Sent UA". Даты для "Sent UA" копятся только с недавнего времени — старые периоды будут занижены.</p>
-        <div id="utilization-summary" class="panel-grid analytics-summary"></div>
-        <h3>Всё ещё не переведено в Sent UA</h3>
-        <table class="table" id="utilization-table">
-          <thead><tr><th>Задача</th><th>В To Test с</th><th>Дизайнер</th><th>CP</th></tr></thead>
-          <tbody id="utilization-tbody"></tbody>
-        </table>
+      <div id="subtab-ua" class="tab-panel">
+        <div class="panel-grid">
+          <div class="panel-card">
+            <h3>UA по дням</h3>
+            <p class="hint">Сколько задач UA запустили ("Sent UA") за выбранный период</p>
+            <p id="ua-number" class="big-number">—</p>
+            <canvas id="chart-ua-by-day"></canvas>
+          </div>
+          <div class="panel-card">
+            <h3>Формат</h3>
+            <div id="ua-format-bar" class="stacked-bar"></div>
+            <div id="ua-format-legend" class="stacked-bar__legend"></div>
+          </div>
+          <div class="panel-card">
+            <h3>По CP</h3>
+            <div id="ua-bars" class="bar-list"></div>
+          </div>
+        </div>
+        <p class="hint">Данные по "Sent UA" копятся только с недавнего времени — старые периоды будут занижены.</p>
       </div>
     </section>
 

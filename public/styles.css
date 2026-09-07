@@ -224,7 +224,11 @@ dialog::backdrop { background: rgba(0,0,0,.3); }
 .analytics-table-toolbar input[type="text"] { min-width: 220px; }
 .table-scroll { overflow-x: auto; border-radius: 14px; }
 .analytics-table { white-space: nowrap; }
-.analytics-table th { cursor: pointer; user-select: none; position: sticky; top: 0; background: var(--panel); z-index: 1; }
+.analytics-sticky-top { position: sticky; top: 0; z-index: 3; background: var(--bg); padding-top: 4px; }
+.analytics-table th {
+  cursor: pointer; user-select: none; position: sticky; z-index: 2; background: var(--panel);
+  top: var(--analytics-sticky-offset, 0px);
+}
 .analytics-table th:hover { color: var(--ink); }
 .analytics-table th.is-sorted::after { content: ' \25BE'; }
 .analytics-table td { font-variant-numeric: tabular-nums; }
