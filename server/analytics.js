@@ -12,7 +12,7 @@ function latestSnapshot(pageIds) {
   return db.prepare(`SELECT * FROM ad_snapshots WHERE ad_page_id IN (${ph}) AND fetch_date = ?`).all(...pageIds, maxDateRow.d);
 }
 
-function metrics(brandId) {
+function metrics(brandId, days = 7) {
   const pageIds = pageIdsForBrand(brandId);
   if (!pageIds.length) return null;
   const ph = pageIds.map(() => '?').join(',');
@@ -32,18 +32,18 @@ function metrics(brandId) {
 
   const DAY = 86400000;
   const today = new Date();
-  const since30 = new Date(today - 30 * DAY).toISOString().slice(0, 10);
-  const since60 = new Date(today - 60 * DAY).toISOString().slice(0, 10);
-  let last30 = 0; let prev30 = 0;
+  const sinceCurrent = new Date(today - days * DAY).toISOString().slice(0, 10);
+  const sincePrev = new Date(today - 2 * days * DAY).toISOString().slice(0, 10);
+  let current = 0; let prev = 0;
   for (const d of byDay) {
-    if (d.day >= since30) last30 += d.n;
-    else if (d.day >= since60) prev30 += d.n;
+    if (d.day >= sinceCurrent) current += d.n;
+    else if (d.day >= sincePrev) prev += d.n;
   }
-  const pctChange = prev30 ? Math.round(((last30 - prev30) / prev30) * 100) : null;
+  const pctChange = prev ? Math.round(((current - prev) / prev) * 100) : null;
 
   return {
     byDay, formatCount, languages: langCount, platforms: platformCount, destinations: destinationCount,
-    totalAdsInLatestSnapshot: rows.length, adsPublished: { last30, prev30, pctChange }
+    totalAdsInLatestSnapshot: rows.length, adsPublished: { days, current, prev, pctChange }
   };
 }
 

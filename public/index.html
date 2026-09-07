@@ -105,8 +105,14 @@
       <div id="tab-metrics" class="tab-panel is-active">
         <div class="panel-grid">
           <div class="panel-card">
-            <h3>Публикации по дням</h3>
-            <p class="hint">За последние 30 дней</p>
+            <div class="panel-card__header-row">
+              <h3>Публикации по дням</h3>
+              <select id="metrics-period" class="select select--small">
+                <option value="7">7 дней</option>
+                <option value="30">30 дней</option>
+                <option value="60">60 дней</option>
+              </select>
+            </div>
             <p id="ads-published-number" class="big-number">—</p>
             <canvas id="chart-by-day"></canvas>
           </div>
@@ -180,6 +186,12 @@
           </div>
           <select id="ads-page-filter" class="select">
             <option value="all">Все аккаунты</option>
+          </select>
+          <select id="ads-sort" class="select">
+            <option value="lastSeen">Сортировка: Last seen</option>
+            <option value="duration">Сортировка: Duration</option>
+            <option value="euReach">Сортировка: EU Reach</option>
+            <option value="duplicates">Сортировка: Creative copies</option>
           </select>
         </div>
         <div id="ads-grid" class="grid grid--ads"></div>

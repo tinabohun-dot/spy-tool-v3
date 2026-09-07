@@ -5,6 +5,8 @@ let charts = {};
 let adsData = [];
 let adsStatusFilter = 'all';
 let adsPageFilter = 'all';
+let adsSort = 'lastSeen';
+let metricsPeriodDays = 7;
 
 function $(sel, root = document) { return root.querySelector(sel); }
 function $all(sel, root = document) { return [...root.querySelectorAll(sel)]; }
@@ -129,6 +131,9 @@ async function openBrand(brand) {
   currentPages = brand.pages;
   adsStatusFilter = 'all';
   adsPageFilter = 'all';
+  adsSort = 'lastSeen';
+  metricsPeriodDays = 7;
+  $('#metrics-period').value = '7';
   $('#view-library').hidden = true;
   $('#view-brand').hidden = false;
   $('#brand-title').textContent = brand.name;
@@ -232,7 +237,7 @@ async function loadTab(name) {
 function destroyChart(key) { if (charts[key]) { charts[key].destroy(); delete charts[key]; } }
 
 async function renderMetrics() {
-  const data = await fetch(`/api/brands/${currentBrandId}/metrics`).then((r) => r.json());
+  const data = await fetch(`/api/brands/${currentBrandId}/metrics?days=${metricsPeriodDays}`).then((r) => r.json());
   if (!data) return;
 
   // публикации по дням (суммарно по форматам)
@@ -245,16 +250,21 @@ async function renderMetrics() {
     options: { plugins: { legend: { display: false } } }
   });
 
-  const { last30, pctChange } = data.adsPublished;
+  const { current, pctChange } = data.adsPublished;
   const pctHtml = pctChange === null ? ''
     : `<span class="big-number__pct ${pctChange >= 0 ? 'big-number__pct--up' : 'big-number__pct--down'}">${pctChange >= 0 ? '↗' : '↘'}${pctChange}%</span>`;
-  $('#ads-published-number').innerHTML = `${last30}${pctHtml}`;
+  $('#ads-published-number').innerHTML = `${current}${pctHtml}`;
 
   renderFormatBar(data.formatCount);
-  renderBarList('#destination-bars', data.destinations);
+  renderBarList('#destination-bars', data.destinations, true, { asLink: true });
   renderBarList('#lang-bars', data.languages);
   renderBarList('#platform-bars', data.platforms);
 }
+
+$('#metrics-period').addEventListener('change', (e) => {
+  metricsPeriodDays = +e.target.value;
+  renderMetrics();
+});
 
 const FORMAT_COLORS = { image: '#d95f2b', video: '#2ea56f', unknown: '#c9c9c4' };
 
@@ -275,13 +285,15 @@ const CATEGORY_COLORS = [
   '#00acc1', '#e91e8c', '#8d6e63', '#607d8b', '#c9a227'
 ];
 
-function renderBarList(sel, obj, sortByValue = true) {
+const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
+
+function renderBarList(sel, obj, sortByValue = true, opts = {}) {
   let entries = Object.entries(obj);
   entries = sortByValue ? entries.sort((a, b) => b[1] - a[1]).slice(0, 8) : entries;
   const max = Math.max(1, ...entries.map((e) => e[1]));
   $(sel).innerHTML = entries.map(([label, val], i) => `
     <div class="bar-row">
-      <span class="bar-row__label">${label}</span>
+      <span class="bar-row__label">${opts.asLink && DOMAIN_RE.test(label) ? `<a href="https://${label}" target="_blank" rel="noopener">${label} ↗</a>` : label}</span>
       <span class="bar-row__track"><span class="bar-row__fill" style="width:${(val / max) * 100}%;background:${CATEGORY_COLORS[i % CATEGORY_COLORS.length]}"></span></span>
       <span class="bar-row__value">${val}</span>
     </div>`).join('') || '<p class="hint">Пока нет данных</p>';
@@ -345,6 +357,13 @@ async function renderAdsGrid() {
   applyAdsFilters();
 }
 
+const ADS_SORTERS = {
+  lastSeen: (ad) => ad.delivery_start || '',
+  duration: (ad) => ad.activityDays ?? -1,
+  euReach: (ad) => ad.eu_total_reach ?? -1,
+  duplicates: (ad) => ad.duplicates ?? 0
+};
+
 function applyAdsFilters() {
   const grid = $('#ads-grid');
   grid.innerHTML = '';
@@ -354,6 +373,11 @@ function applyAdsFilters() {
     if (adsStatusFilter === 'inactive' && ad.is_active) return false;
     if (adsPageFilter !== 'all' && String(ad.ad_page_id) !== String(adsPageFilter)) return false;
     return true;
+  });
+  const getSortValue = ADS_SORTERS[adsSort] || ADS_SORTERS.lastSeen;
+  filtered.sort((a, b) => {
+    const av = getSortValue(a); const bv = getSortValue(b);
+    return av < bv ? 1 : av > bv ? -1 : 0;
   });
   if (!filtered.length) { grid.innerHTML = '<p class="empty-note">Нет данных по выбранным фильтрам.</p>'; return; }
   for (const ad of filtered) {
@@ -391,6 +415,11 @@ $('#ads-status-filter').addEventListener('click', (e) => {
 $('#ads-page-filter').addEventListener('change', (e) => {
   adsPageFilter = e.target.value;
   renderPages(currentPages);
+  applyAdsFilters();
+});
+
+$('#ads-sort').addEventListener('change', (e) => {
+  adsSort = e.target.value;
   applyAdsFilters();
 });
 

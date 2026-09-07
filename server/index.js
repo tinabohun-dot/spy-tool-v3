@@ -121,7 +121,7 @@ app.post('/api/brands/:brandId/refresh', async (req, res) => {
   res.json({ results });
 });
 
-app.get('/api/brands/:brandId/metrics', (req, res) => res.json(analytics.metrics(req.params.brandId)));
+app.get('/api/brands/:brandId/metrics', (req, res) => res.json(analytics.metrics(req.params.brandId, +req.query.days || 7)));
 app.get('/api/brands/:brandId/eu-reach', (req, res) => res.json(analytics.euReach(req.params.brandId)));
 app.get('/api/brands/:brandId/trending', (req, res) => res.json(analytics.trending(req.params.brandId)));
 app.get('/api/brands/:brandId/winning', (req, res) => res.json(analytics.winningAds(req.params.brandId)));
