@@ -531,12 +531,14 @@ let analyticsTypeFilter = '';
 let analyticsNameFilter = '';
 let analyticsSort = { key: 'spend', dir: 'desc' };
 let analyticsVisibleCreatives = [];
+let analyticsSubtab = 'creatives';
+const analyticsSubtabLoaded = {};
 
 function initAnalyticsView() {
   if (analyticsInited) return;
   analyticsInited = true;
   setAnalyticsPeriod(7);
-  loadAnalytics($('#analytics-since').value, $('#analytics-until').value);
+  loadActiveSubtab();
 }
 
 function setAnalyticsPeriod(days) {
@@ -547,17 +549,35 @@ function setAnalyticsPeriod(days) {
   $all('#analytics-period-presets .segmented__btn').forEach((b) => b.classList.toggle('is-active', +b.dataset.days === days));
 }
 
+function loadActiveSubtab() {
+  const since = $('#analytics-since').value;
+  const until = $('#analytics-until').value;
+  if (analyticsSubtab === 'creatives') return loadAnalytics(since, until);
+  if (analyticsSubtab === 'production') return loadProduction(since, until);
+  if (analyticsSubtab === 'cp') return loadCp(since, until);
+  if (analyticsSubtab === 'utilization') return loadUtilization(since, until);
+}
+
+$('#analytics-subtabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.tab');
+  if (!btn) return;
+  analyticsSubtab = btn.dataset.subtab;
+  $all('#analytics-subtabs .tab').forEach((b) => b.classList.toggle('is-active', b === btn));
+  $all('#view-analytics .tab-panel').forEach((p) => p.classList.toggle('is-active', p.id === `subtab-${analyticsSubtab}`));
+  loadActiveSubtab();
+});
+
 $('#analytics-period-presets').addEventListener('click', (e) => {
   const btn = e.target.closest('.segmented__btn');
   if (!btn) return;
   setAnalyticsPeriod(+btn.dataset.days);
-  loadAnalytics($('#analytics-since').value, $('#analytics-until').value);
+  loadActiveSubtab();
 });
 
 $('#analytics-filters').addEventListener('submit', (e) => {
   e.preventDefault();
   $all('#analytics-period-presets .segmented__btn').forEach((b) => b.classList.remove('is-active'));
-  loadAnalytics($('#analytics-since').value, $('#analytics-until').value);
+  loadActiveSubtab();
 });
 
 async function loadAnalytics(since, until) {
@@ -768,6 +788,74 @@ function downloadAnalyticsCsv() {
 }
 
 $('#analytics-download-btn').addEventListener('click', downloadAnalyticsCsv);
+
+// ---------- Продакшн / CP / Утилизация (Airtable) ----------
+async function fetchJson(url) {
+  const resp = await fetch(url);
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error || 'Ошибка запроса');
+  return data;
+}
+
+async function loadProduction(since, until) {
+  $('#analytics-status').textContent = 'Загружаю...';
+  try {
+    const data = await fetchJson(`/api/analytics/production?${new URLSearchParams({ since, until })}`);
+    $('#analytics-status').textContent = '';
+    $('#production-summary').innerHTML = `
+      <div class="panel-card"><h3>Всего дошло до To Test</h3><p class="big-number">${data.total}</p></div>
+      <div class="panel-card"><h3>Video</h3><p class="big-number">${data.video}</p></div>
+      <div class="panel-card"><h3>Static</h3><p class="big-number">${data.static}</p></div>`;
+    $('#production-tbody').innerHTML = data.byDesigner.length
+      ? data.byDesigner.map((d) => `<tr><td>${d.designer}</td><td>${d.total}</td><td>${d.video}</td><td>${d.static}</td></tr>`).join('')
+      : '<tr><td colspan="4" class="empty-note">Нет данных за период.</td></tr>';
+  } catch (err) {
+    $('#analytics-status').textContent = 'Ошибка: ' + err.message;
+  }
+}
+
+async function loadCp(since, until) {
+  $('#analytics-status').textContent = 'Загружаю...';
+  try {
+    const data = await fetchJson(`/api/analytics/cp?${new URLSearchParams({ since, until })}`);
+    $('#analytics-status').textContent = '';
+    $('#cp-summary').innerHTML = `
+      <div class="panel-card"><h3>Всего в To Do</h3><p class="big-number">${data.total}</p></div>
+      <div class="panel-card"><h3>Video</h3><p class="big-number">${data.video}</p></div>
+      <div class="panel-card"><h3>Static</h3><p class="big-number">${data.static}</p></div>`;
+    $('#cp-tbody').innerHTML = data.byCp.length
+      ? data.byCp.map((c) => `<tr><td>${c.cp}</td><td>${c.total}</td><td>${c.video}</td><td>${c.static}</td></tr>`).join('')
+      : '<tr><td colspan="4" class="empty-note">Нет данных за период.</td></tr>';
+
+    destroyChart('cpByDay');
+    charts.cpByDay = new Chart($('#chart-cp-by-day'), {
+      type: 'bar',
+      data: { labels: data.byDay.map((d) => d.day), datasets: [{ label: 'Задач в To Do', data: data.byDay.map((d) => d.count), backgroundColor: '#d95f2b' }] },
+      options: { plugins: { legend: { display: false } } }
+    });
+  } catch (err) {
+    $('#analytics-status').textContent = 'Ошибка: ' + err.message;
+  }
+}
+
+async function loadUtilization(since, until) {
+  $('#analytics-status').textContent = 'Загружаю...';
+  try {
+    const data = await fetchJson(`/api/analytics/utilization?${new URLSearchParams({ since, until })}`);
+    $('#analytics-status').textContent = '';
+    const fmtHours = (h) => h == null ? '—' : h < 24 ? `${h.toFixed(1)} ч` : `${(h / 24).toFixed(1)} дн`;
+    $('#utilization-summary').innerHTML = `
+      <div class="panel-card"><h3>Вошло в To Test</h3><p class="big-number">${data.enteredToTest}</p></div>
+      <div class="panel-card"><h3>Дошло до Sent UA</h3><p class="big-number">${data.completed}</p></div>
+      <div class="panel-card"><h3>Ещё не переведено</h3><p class="big-number">${data.pending}</p></div>
+      <div class="panel-card"><h3>Среднее время</h3><p class="big-number">${fmtHours(data.avgHours)}</p><p class="hint">медиана: ${fmtHours(data.medianHours)}</p></div>`;
+    $('#utilization-tbody').innerHTML = data.pendingTasks.length
+      ? data.pendingTasks.map((t) => `<tr><td>${t.taskName}</td><td>${t.whenToTest}</td><td>${t.designer || '—'}</td><td>${t.cp || '—'}</td></tr>`).join('')
+      : '<tr><td colspan="4" class="empty-note">Все задачи из периода уже переведены в Sent UA.</td></tr>';
+  } catch (err) {
+    $('#analytics-status').textContent = 'Ошибка: ' + err.message;
+  }
+}
 
 // ---------- Старт ----------
 loadBrands();

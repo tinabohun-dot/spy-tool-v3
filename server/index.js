@@ -12,6 +12,7 @@ const { fetchSnapshotForAdPage } = require('./fetchService');
 const analytics = require('./analytics');
 const jobStatus = require('./jobStatus');
 const metaMarketing = require('./metaMarketing');
+const airtable = require('./airtable');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -184,6 +185,46 @@ app.get('/api/analytics', async (req, res) => {
       overall: { summary: metaMarketing.summarize(overallCreatives), creatives: overallCreatives },
       byAccount
     });
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// Креативный продакшн (Airtable): сколько задач дошло до "To Test" за период,
+// разбивка видео/статика и по дизайнерам.
+app.get('/api/analytics/production', async (req, res) => {
+  try {
+    const { since, until } = req.query;
+    if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until' });
+    res.json(await airtable.productionReport(since, until));
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// CP (Airtable): сколько задач перевели в "To Do" по дням, видео/статика,
+// разбивка по тому, какой CP поставил задачу.
+app.get('/api/analytics/cp', async (req, res) => {
+  try {
+    const { since, until } = req.query;
+    if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until' });
+    res.json(await airtable.cpReport(since, until));
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// Утилизация (Airtable): время между "To Test" и "Sent UA" + сколько ещё не
+// переведено. Данные по "Sent UA" копятся только с момента подключения
+// automation, поэтому за старые периоды completed может быть занижен.
+app.get('/api/analytics/utilization', async (req, res) => {
+  try {
+    const { since, until } = req.query;
+    if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until' });
+    res.json(await airtable.utilizationReport(since, until));
   } catch (err) {
     console.error(err);
     res.status(err.status || 500).json({ error: err.message });
