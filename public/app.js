@@ -19,8 +19,10 @@ $all('.side-nav__item').forEach((btn) => {
     $('#view-library').hidden = view !== 'library';
     $('#view-search').hidden = view !== 'search';
     $('#view-jobs').hidden = view !== 'jobs';
+    $('#view-analytics').hidden = view !== 'analytics';
     $('#view-brand').hidden = true;
     if (view === 'jobs') startJobsPolling(); else stopJobsPolling();
+    if (view === 'analytics') initAnalyticsView();
   });
 });
 
@@ -510,6 +512,107 @@ $('#jobs-list').addEventListener('click', async (e) => {
   await fetch(`/api/pages/${btn.dataset.pageId}/refresh`, { method: 'POST' });
   renderJobs();
 });
+
+// ---------- Аналитика: перформанс своих рекламных кабинетов ----------
+const GRADE_BADGE_COLORS = {
+  'Promising': { bg: '#e1bee7', color: '#4a148c' },
+  'Test': { bg: '#ffe0b2', color: '#e65100' },
+  'Scale': { bg: '#bbdefb', color: '#0d47a1' },
+  'Alpha': { bg: '#c8e6c9', color: '#1b5e20' },
+  'Bad': { bg: '#e6b8b8', color: '#7f0000' },
+  'No purchases': { bg: '#ffcdd2', color: '#b71c1c' }
+};
+
+let analyticsInited = false;
+
+function initAnalyticsView() {
+  if (analyticsInited) return;
+  analyticsInited = true;
+  const today = new Date();
+  const weekAgo = new Date(today.getTime() - 7 * 86400000);
+  $('#analytics-until').value = today.toISOString().slice(0, 10);
+  $('#analytics-since').value = weekAgo.toISOString().slice(0, 10);
+  loadAnalytics($('#analytics-since').value, $('#analytics-until').value);
+}
+
+$('#analytics-filters').addEventListener('submit', (e) => {
+  e.preventDefault();
+  loadAnalytics($('#analytics-since').value, $('#analytics-until').value);
+});
+
+async function loadAnalytics(since, until) {
+  $('#analytics-status').textContent = 'Загружаю...';
+  $('#analytics-content').innerHTML = '';
+  try {
+    const params = new URLSearchParams({ since, until });
+    const resp = await fetch(`/api/analytics?${params}`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Ошибка запроса');
+    $('#analytics-status').textContent = '';
+    renderAnalytics(data);
+  } catch (err) {
+    $('#analytics-status').textContent = 'Ошибка: ' + err.message;
+  }
+}
+
+function money(n) {
+  return n == null ? '—' : '$' + Math.round(n).toLocaleString('ru-RU');
+}
+
+function renderAnalyticsSummary(summary, count) {
+  return `
+    <div class="panel-grid analytics-summary">
+      <div class="panel-card"><h3>Расход</h3><p class="big-number">${money(summary.totalSpend)}</p></div>
+      <div class="panel-card"><h3>Покупки</h3><p class="big-number">${summary.totalPurchases}</p></div>
+      <div class="panel-card"><h3>CPA</h3><p class="big-number">${summary.overallCpa ? '$' + summary.overallCpa.toFixed(2) : '—'}</p></div>
+      <div class="panel-card">
+        <h3>Success Rate</h3>
+        <p class="big-number">${Math.round(summary.successRate * 100)}%</p>
+        <p class="hint">${summary.successCount} из ${count} креативов</p>
+      </div>
+    </div>`;
+}
+
+function renderCreativeCard(c) {
+  const badge = GRADE_BADGE_COLORS[c.grade] || { bg: '#eee', color: '#333' };
+  const extras = [];
+  if (c.mergedCount > 1) extras.push(`<div>×${c.mergedCount} копий</div>`);
+  if (c.accounts?.length > 1) extras.push(`<div>${c.accounts.join(' / ')}</div>`);
+  return `
+    <article class="card">
+      <header class="card__header">
+        <span>${c.name}</span>
+        <span class="grade-badge" style="background:${badge.bg};color:${badge.color}">${c.grade}</span>
+      </header>
+      <div class="card__preview">${c.previewUrl ? `<img class="card__thumb" src="${c.previewUrl}" />` : 'нет превью'}</div>
+      <dl class="card__meta card__meta--wide">
+        <div>Spend: ${money(c.spend)}</div>
+        <div>Purchases: ${c.purchases}</div>
+        <div>CPA: ${c.cpa ? '$' + c.cpa.toFixed(2) : '—'}</div>
+        <div>CTR: ${(c.ctr * 100).toFixed(2)}%</div>
+        ${extras.join('')}
+      </dl>
+    </article>`;
+}
+
+function renderCreativeGrid(creatives) {
+  if (!creatives.length) return '<p class="empty-note">Нет данных за выбранный период.</p>';
+  return `<div class="grid grid--ads">${creatives.map(renderCreativeCard).join('')}</div>`;
+}
+
+function renderAnalytics(data) {
+  let html = '<h2>Все креативы (все аккаунты)</h2>';
+  html += renderAnalyticsSummary(data.overall.summary, data.overall.creatives.length);
+  html += renderCreativeGrid(data.overall.creatives);
+
+  for (const accName of data.accounts) {
+    const acc = data.byAccount[accName];
+    html += `<h2 class="analytics-account-heading">${accName}</h2>`;
+    html += renderAnalyticsSummary(acc.summary, acc.creatives.length);
+    html += renderCreativeGrid(acc.creatives);
+  }
+  $('#analytics-content').innerHTML = html;
+}
 
 // ---------- Старт ----------
 loadBrands();

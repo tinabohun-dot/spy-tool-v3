@@ -25,6 +25,7 @@
       <button class="side-nav__item is-active" data-view="library">Ad Library</button>
       <button class="side-nav__item" data-view="search">Быстрый поиск</button>
       <button class="side-nav__item" data-view="jobs">Сбор данных</button>
+      <button class="side-nav__item" data-view="analytics">Аналитика</button>
     </nav>
 
     <form id="search-form" class="filters" hidden>
@@ -205,6 +206,27 @@
         <p class="view__sub">Идёт ли сейчас сбор снепшота по каждой Ad Page, и чем закончился последний запуск.</p>
       </div>
       <div id="jobs-list" class="jobs-list"></div>
+    </section>
+
+    <!-- ===== Аналитика: перформанс своих рекламных кабинетов ===== -->
+    <section id="view-analytics" class="view" hidden>
+      <div class="view__header">
+        <h1>Аналитика</h1>
+        <p class="view__sub">Расход, покупки, CPA и грейд креативов за выбранный период — по всем аккаунтам и по каждому отдельно.</p>
+      </div>
+      <form id="analytics-filters" class="analytics-filters">
+        <label class="field">
+          <span class="field__label">С</span>
+          <input type="date" id="analytics-since" required />
+        </label>
+        <label class="field">
+          <span class="field__label">По</span>
+          <input type="date" id="analytics-until" required />
+        </label>
+        <button type="submit" class="btn btn--primary">Показать</button>
+      </form>
+      <div id="analytics-status" class="status-line"></div>
+      <div id="analytics-content"></div>
     </section>
 
   </main>

@@ -11,6 +11,7 @@ const db = require('./db');
 const { fetchSnapshotForAdPage } = require('./fetchService');
 const analytics = require('./analytics');
 const jobStatus = require('./jobStatus');
+const metaMarketing = require('./metaMarketing');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -150,6 +151,43 @@ app.get('/api/jobs', (req, res) => {
     lastFetchDate: dataByPageId[p.id]?.lastFetchDate || null,
     ...(jobsByPageId[p.id] || { status: 'idle', startedAt: null, finishedAt: null, total: null, processed: 0, error: null })
   })));
+});
+
+// Аналитика по собственным рекламным кабинетам (Marketing API): расход,
+// покупки, CPA, грейд — за выбранный период, с объединением дублей одного
+// креатива и разбивкой по аккаунтам.
+app.get('/api/analytics', async (req, res) => {
+  try {
+    const { since, until } = req.query;
+    if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until (YYYY-MM-DD)' });
+
+    const accNames = Object.keys(metaMarketing.accounts());
+    if (!accNames.length) return res.status(400).json({ error: 'META_MARKETING_ACCOUNTS не задан в server/.env' });
+
+    const allRows = await metaMarketing.fetchAllAccountsInsights(since, until);
+
+    const overallCreatives = await metaMarketing.attachPreviews(
+      metaMarketing.groupRowsByCreative(allRows).map(metaMarketing.buildCreativeEntry)
+    );
+
+    const byAccount = {};
+    for (const accName of accNames) {
+      const rows = allRows.filter((r) => r._accountName === accName);
+      const creatives = await metaMarketing.attachPreviews(
+        metaMarketing.groupRowsByCreative(rows).map(metaMarketing.buildCreativeEntry)
+      );
+      byAccount[accName] = { summary: metaMarketing.summarize(creatives), creatives };
+    }
+
+    res.json({
+      accounts: accNames,
+      overall: { summary: metaMarketing.summarize(overallCreatives), creatives: overallCreatives },
+      byAccount
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message });
+  }
 });
 
 // Запустить сбор снепшота для одной конкретной Ad Page (не всего бренда) —

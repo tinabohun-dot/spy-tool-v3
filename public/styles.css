@@ -210,3 +210,12 @@ dialog::backdrop { background: rgba(0,0,0,.3); }
   border-top-color: var(--accent); animation: job-spin .7s linear infinite;
 }
 @keyframes job-spin { to { transform: rotate(360deg); } }
+
+.analytics-filters { display: flex; align-items: flex-end; gap: 14px; margin: 16px 0 8px; flex-wrap: wrap; }
+.analytics-filters .field { flex-direction: row; align-items: center; gap: 8px; }
+.analytics-filters .field__label { font-size: 13px; }
+.analytics-summary { margin-bottom: 20px; }
+.analytics-account-heading { margin: 32px 0 4px; font-size: 20px; }
+.analytics-account-sub { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
+.grade-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.card__meta--wide div { font-size: 12px; }
