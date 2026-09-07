@@ -134,14 +134,32 @@ app.get('/api/jobs', (req, res) => {
     SELECT ad_pages.id, ad_pages.page_name, ad_pages.page_id, ad_pages.brand_id, brands.name as brand_name
     FROM ad_pages JOIN brands ON brands.id = ad_pages.brand_id
   `).all();
+  const dataByPageId = Object.fromEntries(
+    db.prepare(`
+      SELECT ad_page_id, COUNT(DISTINCT ad_id) as existingCount, MAX(fetch_date) as lastFetchDate
+      FROM ad_snapshots GROUP BY ad_page_id
+    `).all().map((r) => [r.ad_page_id, r])
+  );
   const jobsByPageId = Object.fromEntries(jobStatus.listJobs().map((j) => [j.pageId, j]));
   res.json(pages.map((p) => ({
     pageId: p.id,
     pageName: p.page_name || p.page_id,
     brandId: p.brand_id,
     brandName: p.brand_name,
+    existingCount: dataByPageId[p.id]?.existingCount || 0,
+    lastFetchDate: dataByPageId[p.id]?.lastFetchDate || null,
     ...(jobsByPageId[p.id] || { status: 'idle', startedAt: null, finishedAt: null, total: null, processed: 0, error: null })
   })));
+});
+
+// Запустить сбор снепшота для одной конкретной Ad Page (не всего бренда) —
+// пригодится, когда во вкладке "Сбор данных" видно, что по странице нет
+// данных или сбор давно не запускался.
+app.post('/api/pages/:pageId/refresh', (req, res) => {
+  const page = db.prepare('SELECT * FROM ad_pages WHERE id = ?').get(req.params.pageId);
+  if (!page) return res.status(404).json({ error: 'Ad Page не найдена' });
+  fetchSnapshotForAdPage(page).catch((e) => console.error(`Сбор не удался для page_id=${page.page_id}:`, e.message));
+  res.json({ ok: true });
 });
 
 const schedule = process.env.CRON_SCHEDULE || '0 3 * * *';

@@ -456,6 +456,11 @@ function formatTime(iso) {
   return new Date(iso).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 }
 
+function formatDate(d) {
+  if (!d) return '';
+  return new Date(d).toLocaleDateString('ru-RU');
+}
+
 async function renderJobs() {
   const jobs = await fetch('/api/jobs').then((r) => r.json());
   const list = $('#jobs-list');
@@ -471,18 +476,40 @@ async function renderJobs() {
     } else if (j.status === 'error') {
       statusHtml = `<span class="job-status job-status--error">✕ Ошибка в ${formatTime(j.finishedAt)}: ${j.error || 'неизвестно'}</span>`;
     } else {
-      statusHtml = '<span class="job-status job-status--idle">— ещё не собиралось</span>';
+      statusHtml = '<span class="job-status job-status--idle">Сбор ещё не запускался в этой сессии сервера</span>';
     }
+
+    const dataHtml = j.existingCount
+      ? `<div class="job-row__data">В базе: ${j.existingCount} объявлений (посл. сбор ${formatDate(j.lastFetchDate)})</div>`
+      : '<div class="job-row__data job-row__data--empty">В базе пока нет объявлений по этой странице</div>';
+
+    const buttonHtml = j.status === 'running'
+      ? ''
+      : `<button type="button" class="btn btn--small job-row__refresh" data-page-id="${j.pageId}">↻ Собрать</button>`;
+
     return `
       <div class="job-row">
         <div class="job-row__names">
           <div class="job-row__brand">${j.brandName}</div>
           <div class="job-row__page">${j.pageName}</div>
+          ${dataHtml}
         </div>
-        ${statusHtml}
+        <div class="job-row__right">
+          ${statusHtml}
+          ${buttonHtml}
+        </div>
       </div>`;
   }).join('');
 }
+
+$('#jobs-list').addEventListener('click', async (e) => {
+  const btn = e.target.closest('.job-row__refresh');
+  if (!btn) return;
+  btn.disabled = true;
+  btn.textContent = 'Запускаю...';
+  await fetch(`/api/pages/${btn.dataset.pageId}/refresh`, { method: 'POST' });
+  renderJobs();
+});
 
 // ---------- Старт ----------
 loadBrands();
