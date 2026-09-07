@@ -234,6 +234,43 @@ app.get('/api/analytics/ua', async (req, res) => {
   }
 });
 
+// Formats: формат/воронка (по своим креативам, без превью — быстрее) + платформы.
+app.get('/api/analytics/formats', async (req, res) => {
+  try {
+    const { since, until } = req.query;
+    if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until' });
+
+    const allRows = await metaMarketing.fetchAllAccountsInsights(since, until);
+    const creatives = metaMarketing.groupRowsByCreative(allRows).map(metaMarketing.buildCreativeEntry);
+
+    const format = { Video: 0, Static: 0 };
+    const funnel = {};
+    for (const c of creatives) {
+      format[c.type] = (format[c.type] || 0) + 1;
+      const f = c.funnel || '—';
+      funnel[f] = (funnel[f] || 0) + 1;
+    }
+    const platform = await metaMarketing.fetchPlatformBreakdown(since, until);
+
+    res.json({ total: creatives.length, format, funnel, platform });
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+// Users: демография по своим кабинетам (не только EU, как в Ad Library).
+app.get('/api/analytics/users', async (req, res) => {
+  try {
+    const { since, until } = req.query;
+    if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until' });
+    res.json(await metaMarketing.fetchDemographics(since, until));
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 // Запустить сбор снепшота для одной конкретной Ad Page (не всего бренда) —
 // пригодится, когда во вкладке "Сбор данных" видно, что по странице нет
 // данных или сбор давно не запускался.

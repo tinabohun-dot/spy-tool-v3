@@ -554,6 +554,9 @@ function loadActiveSubtab() {
   const since = $('#analytics-since').value;
   const until = $('#analytics-until').value;
   if (analyticsSubtab === 'creatives') return loadAnalytics(since, until);
+  if (analyticsSubtab === 'tops') return loadTops(since, until);
+  if (analyticsSubtab === 'formats') return loadFormats(since, until);
+  if (analyticsSubtab === 'users') return loadUsers(since, until);
   if (analyticsSubtab === 'production') return loadProduction(since, until);
   if (analyticsSubtab === 'cp') return loadCp(since, until);
   if (analyticsSubtab === 'ua') return loadUa(since, until);
@@ -835,6 +838,61 @@ function renderGenericStackedBar(barSel, legendSel, segments) {
   $(legendSel).innerHTML = segments
     .map((s) => `<span><span class="stacked-bar__dot" style="background:${s.color}"></span>${s.label} ${Math.round((s.value / total) * 100)}%</span>`)
     .join('');
+}
+
+const SUCCESS_GRADES = ['Promising', 'Test', 'Scale', 'Alpha'];
+
+async function loadTops(since, until) {
+  $('#analytics-status').textContent = 'Загружаю...';
+  try {
+    const params = new URLSearchParams({ since, until });
+    const resp = await fetch(`/api/analytics?${params}`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Ошибка запроса');
+    $('#analytics-status').textContent = '';
+
+    const tops = data.overall.creatives
+      .filter((c) => SUCCESS_GRADES.includes(c.grade))
+      .sort((a, b) => b.spend - a.spend);
+
+    $('#tops-tbody').innerHTML = tops.length
+      ? tops.map(renderAnalyticsRow).join('')
+      : '<tr><td colspan="33" class="empty-note">Нет креативов с грейдом Promising и выше за период.</td></tr>';
+  } catch (err) {
+    $('#analytics-status').textContent = 'Ошибка: ' + err.message;
+  }
+}
+
+async function loadFormats(since, until) {
+  $('#analytics-status').textContent = 'Загружаю...';
+  try {
+    const data = await fetchJson(`/api/analytics/formats?${new URLSearchParams({ since, until })}`);
+    $('#analytics-status').textContent = '';
+
+    renderGenericStackedBar('#formats-format-bar', '#formats-format-legend', [
+      { label: 'Video', value: data.format.Video || 0, color: '#2ea56f' },
+      { label: 'Static', value: data.format.Static || 0, color: '#d95f2b' }
+    ]);
+    renderBarList('#formats-platform-bars', data.platform);
+    renderBarList('#formats-funnel-bars', data.funnel);
+  } catch (err) {
+    $('#analytics-status').textContent = 'Ошибка: ' + err.message;
+  }
+}
+
+async function loadUsers(since, until) {
+  $('#analytics-status').textContent = 'Загружаю...';
+  try {
+    const data = await fetchJson(`/api/analytics/users?${new URLSearchParams({ since, until })}`);
+    $('#analytics-status').textContent = '';
+
+    $('#users-reach-number').textContent = num(data.totalReach);
+    renderBarList('#users-gender-bars', data.gender);
+    renderBarList('#users-age-bars', data.age);
+    renderBarList('#users-country-bars', data.countries);
+  } catch (err) {
+    $('#analytics-status').textContent = 'Ошибка: ' + err.message;
+  }
 }
 
 async function loadProduction(since, until) {

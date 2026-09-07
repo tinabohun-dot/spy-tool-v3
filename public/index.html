@@ -234,6 +234,9 @@
 
       <div class="tabs" id="analytics-subtabs">
         <button type="button" class="tab is-active" data-subtab="creatives">Все креативы</button>
+        <button type="button" class="tab" data-subtab="tops">TOPS</button>
+        <button type="button" class="tab" data-subtab="formats">Formats</button>
+        <button type="button" class="tab" data-subtab="users">Users</button>
         <button type="button" class="tab" data-subtab="production">Design</button>
         <button type="button" class="tab" data-subtab="cp">CP</button>
         <button type="button" class="tab" data-subtab="ua">UA</button>
@@ -309,6 +312,96 @@
             </thead>
             <tbody id="analytics-tbody"></tbody>
           </table>
+        </div>
+      </div>
+
+      <div id="subtab-tops" class="tab-panel">
+        <p class="hint">Только креативы с грейдом Promising и выше (Bad и No purchases сюда не входят).</p>
+        <div class="table-scroll">
+          <table class="table analytics-table" id="tops-table">
+            <thead>
+              <tr>
+                <th>Превью</th>
+                <th>Название</th>
+                <th>Тип</th>
+                <th>Grade</th>
+                <th>Funnel</th>
+                <th>Spend</th>
+                <th>Purchases</th>
+                <th>CPA</th>
+                <th>CTR</th>
+                <th>Impressions</th>
+                <th>Reach</th>
+                <th>Frequency</th>
+                <th>Clicks</th>
+                <th>Unique Clicks</th>
+                <th>Link Clicks</th>
+                <th>Landing Views</th>
+                <th>Cost/Landing</th>
+                <th>CPM</th>
+                <th>CPC</th>
+                <th>Add to Cart</th>
+                <th>Leads</th>
+                <th>Purchase Value</th>
+                <th>Video Plays</th>
+                <th>Hook Rate</th>
+                <th>Video 25%</th>
+                <th>Video 50%</th>
+                <th>Video 75%</th>
+                <th>Video 100%</th>
+                <th>Avg Watch</th>
+                <th>Копий</th>
+                <th>Аккаунты</th>
+                <th>Campaign</th>
+                <th>Статус</th>
+              </tr>
+            </thead>
+            <tbody id="tops-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="subtab-formats" class="tab-panel">
+        <div class="panel-grid">
+          <div class="panel-card">
+            <h3>Формат</h3>
+            <div id="formats-format-bar" class="stacked-bar"></div>
+            <div id="formats-format-legend" class="stacked-bar__legend"></div>
+          </div>
+          <div class="panel-card">
+            <h3>Платформы</h3>
+            <div id="formats-platform-bars" class="bar-list"></div>
+          </div>
+          <div class="panel-card">
+            <h3>Воронки</h3>
+            <div id="formats-funnel-bars" class="bar-list"></div>
+          </div>
+          <div class="panel-card">
+            <h3>Языки</h3>
+            <p class="hint">Marketing API не отдаёт язык по объявлению напрямую — этот срез недоступен.</p>
+          </div>
+        </div>
+      </div>
+
+      <div id="subtab-users" class="tab-panel">
+        <p class="hint">По всем странам (не только EU, как в Ad Library). Reach по срезам не складывается в точный уникальный охват — приближённая оценка.</p>
+        <div class="panel-card">
+          <h3>Охват (reach)</h3>
+          <p id="users-reach-number" class="big-number">—</p>
+        </div>
+        <div class="panel-grid">
+          <div class="panel-card">
+            <h3>Пол</h3>
+            <div id="users-gender-bars" class="bar-list"></div>
+          </div>
+          <div class="panel-card">
+            <h3>Возраст</h3>
+            <div id="users-age-bars" class="bar-list"></div>
+          </div>
+          <div class="panel-card">
+            <h3>Страны</h3>
+            <div id="users-country-bars" class="bar-list"></div>
+          </div>
         </div>
       </div>
 
