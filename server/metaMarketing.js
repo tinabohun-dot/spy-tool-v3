@@ -1,6 +1,7 @@
 // Meta Marketing API (не Ad Library) — перформанс собственных рекламных
-// кабинетов: расход, покупки, CPA. Логика грейдинга и группировки дублей
-// портирована из личного Google Apps Script пользователя (meta_kpi v12).
+// кабинетов: расход, покупки, CPA и т.д. Логика метрик, грейдинга и
+// группировки дублей портирована из личного Google Apps Script
+// пользователя (meta_kpi v12).
 const API_VERSION = 'v19.0';
 
 const CPA_THRESHOLD = 75;
@@ -12,6 +13,12 @@ const PURCHASE_TYPES_PRIORITY = [
   ['purchase', 'offsite_conversion.fb_pixel_purchase', 'onsite_conversion.purchase',
     'onsite_web_purchase', 'onsite_web_app_purchase', 'app_custom_event.fb_mobile_purchase',
     'offline_conversion.purchase']
+];
+const LEAD_TYPES_PRIORITY = [
+  ['omni_lead'],
+  ['lead', 'offsite_conversion.fb_pixel_lead', 'onsite_conversion.lead_grouped',
+    'onsite_conversion.lead', 'app_custom_event.fb_mobile_complete_registration',
+    'offline_conversion.lead']
 ];
 
 function parseAccounts(envValue) {
@@ -51,7 +58,9 @@ async function fetchAccountInsights(accountId, since, until) {
   const fields = [
     'ad_id', 'ad_name', 'campaign_name',
     'impressions', 'reach', 'clicks', 'unique_clicks', 'spend',
-    'actions', 'action_values'
+    'actions', 'action_values',
+    'video_play_actions', 'video_p25_watched_actions', 'video_p50_watched_actions',
+    'video_p75_watched_actions', 'video_p100_watched_actions', 'video_avg_time_watched_actions'
   ].join(',');
   const url = new URL(`https://graph.facebook.com/${API_VERSION}/${accountId}/insights`);
   url.searchParams.set('fields', fields);
@@ -73,6 +82,12 @@ async function fetchAllAccountsInsights(since, until) {
   return rows;
 }
 
+function getAction(actions, type) {
+  if (!actions) return 0;
+  const f = actions.find((a) => a.action_type === type);
+  return f ? parseFloat(f.value) || 0 : 0;
+}
+
 function sumActionTypes(arr, types) {
   if (!arr) return 0;
   return arr.filter((a) => types.includes(a.action_type)).reduce((s, a) => s + (parseFloat(a.value) || 0), 0);
@@ -85,6 +100,11 @@ function getActionByPriority(arr, priorityGroups) {
     if (sum > 0) return sum;
   }
   return 0;
+}
+
+function getVideoMetric(arr) {
+  if (!arr || !arr.length) return 0;
+  return parseFloat(arr[0].value || 0);
 }
 
 // Ведущий номер + вариация из имени объявления — так объединяются копии
@@ -116,6 +136,23 @@ function mergeActionArrays(a, b) {
   return Object.entries(map).map(([action_type, value]) => ({ action_type, value: String(value) }));
 }
 
+function mergeVideoMetric(a, b) {
+  return [{ value: String(getVideoMetric(a) + getVideoMetric(b)) }];
+}
+
+function mergeAvgWatchTime(prevArr, prevPlays, newArr, newPlays) {
+  const prevAvg = getVideoMetric(prevArr) || 0;
+  const newAvg = getVideoMetric(newArr) || 0;
+  const totalPlays = (prevPlays || 0) + (newPlays || 0);
+  if (totalPlays === 0) return [{ value: '0' }];
+  return [{ value: String(((prevAvg * (prevPlays || 0)) + (newAvg * (newPlays || 0))) / totalPlays) }];
+}
+
+const VIDEO_FIELDS = [
+  'video_play_actions', 'video_p25_watched_actions', 'video_p50_watched_actions',
+  'video_p75_watched_actions', 'video_p100_watched_actions'
+];
+
 function groupRowsByCreative(allRows) {
   const groups = {};
   const order = [];
@@ -123,7 +160,7 @@ function groupRowsByCreative(allRows) {
     const groupKey = getCreativeGroupKey(row.ad_name);
     const key = groupKey !== null ? groupKey : '__noNum__' + row.ad_name;
     if (!groups[key]) {
-      const copy = { ...row, _mergedCount: 1, _accountNames: [row._accountName] };
+      const copy = { ...row, _mergedCount: 1, _accountNames: [row._accountName], _prevPlays: getVideoMetric(row.video_play_actions) };
       groups[key] = copy;
       order.push(key);
       continue;
@@ -137,8 +174,12 @@ function groupRowsByCreative(allRows) {
     }
     target.actions = mergeActionArrays(target.actions, row.actions);
     target.action_values = mergeActionArrays(target.action_values, row.action_values);
-    // Держим ad_id первого встреченного объявления в группе — он же
-    // используется для получения превью креатива.
+    for (const f of VIDEO_FIELDS) target[f] = mergeVideoMetric(target[f], row[f]);
+    const newPlays = getVideoMetric(row.video_play_actions);
+    target.video_avg_time_watched_actions = mergeAvgWatchTime(
+      target.video_avg_time_watched_actions, target._prevPlays, row.video_avg_time_watched_actions, newPlays
+    );
+    target._prevPlays = getVideoMetric(target.video_play_actions);
   }
   return order.map((k) => groups[k]);
 }
@@ -157,27 +198,60 @@ function getGrade(purchases, cpa) {
 
 function buildCreativeEntry(row) {
   const impressions = parseInt(row.impressions || 0, 10);
+  const reach = parseInt(row.reach || 0, 10);
   const spend = parseFloat(row.spend || 0);
   const clicks = parseInt(row.clicks || 0, 10);
+  const uniqueClicks = parseInt(row.unique_clicks || 0, 10);
   const linkClicks = sumActionTypes(row.actions, ['link_click']);
+  const landingViews = getAction(row.actions, 'landing_page_view');
+  const addToCart = getAction(row.actions, 'add_to_cart');
   const purchases = getActionByPriority(row.actions, PURCHASE_TYPES_PRIORITY);
   const purchaseValue = getActionByPriority(row.action_values, PURCHASE_TYPES_PRIORITY);
+  const leads = getActionByPriority(row.actions, LEAD_TYPES_PRIORITY);
+  const videoViews3s = getAction(row.actions, 'video_view');
+
   const cpa = purchases > 0 ? spend / purchases : null;
   const ctr = impressions > 0 ? linkClicks / impressions : 0;
+  const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0;
+  const cpc = clicks > 0 ? spend / clicks : null;
+  const costPerLandingView = landingViews > 0 ? spend / landingViews : null;
+  const frequency = reach > 0 ? impressions / reach : 0;
+
+  const videoPlays = getVideoMetric(row.video_play_actions);
+  const isVideo = /_v_/i.test(row.ad_name || '') || (!/_s_/i.test(row.ad_name || '') && videoPlays > 0);
+  const hookRate = isVideo && impressions > 0 ? videoViews3s / impressions : null;
 
   return {
     adId: row.ad_id,
     name: row.ad_name,
+    type: isVideo ? 'Video' : 'Static',
     mergedCount: row._mergedCount || 1,
     accounts: row._accountNames || (row._accountName ? [row._accountName] : []),
     campaignName: row.campaign_name || '',
     spend,
     impressions,
+    reach,
+    frequency,
     clicks,
+    uniqueClicks,
+    linkClicks,
+    landingViews,
+    costPerLandingView,
+    cpm,
+    cpc,
+    addToCart,
+    leads,
     purchases,
     purchaseValue,
     cpa,
     ctr,
+    videoPlays: isVideo ? videoPlays : null,
+    hookRate,
+    videoP25: isVideo ? getVideoMetric(row.video_p25_watched_actions) : null,
+    videoP50: isVideo ? getVideoMetric(row.video_p50_watched_actions) : null,
+    videoP75: isVideo ? getVideoMetric(row.video_p75_watched_actions) : null,
+    videoP100: isVideo ? getVideoMetric(row.video_p100_watched_actions) : null,
+    avgWatchTime: isVideo ? getVideoMetric(row.video_avg_time_watched_actions) : null,
     grade: getGrade(purchases, cpa)
   };
 }

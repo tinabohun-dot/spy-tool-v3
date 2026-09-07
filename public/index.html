@@ -215,6 +215,11 @@
         <p class="view__sub">Расход, покупки, CPA и грейд креативов за выбранный период — по всем аккаунтам и по каждому отдельно.</p>
       </div>
       <form id="analytics-filters" class="analytics-filters">
+        <div class="segmented" id="analytics-period-presets">
+          <button type="button" class="segmented__btn is-active" data-days="7">7 дней</button>
+          <button type="button" class="segmented__btn" data-days="14">14 дней</button>
+          <button type="button" class="segmented__btn" data-days="30">30 дней</button>
+        </div>
         <label class="field">
           <span class="field__label">С</span>
           <input type="date" id="analytics-since" required />
@@ -226,7 +231,69 @@
         <button type="submit" class="btn btn--primary">Показать</button>
       </form>
       <div id="analytics-status" class="status-line"></div>
-      <div id="analytics-content"></div>
+
+      <div id="analytics-summary" class="panel-grid analytics-summary"></div>
+
+      <div id="analytics-account-chips" class="pages-row"></div>
+
+      <div class="analytics-table-toolbar">
+        <select id="analytics-grade-filter" class="select">
+          <option value="">Все грейды</option>
+          <option value="Alpha">Alpha</option>
+          <option value="Scale">Scale</option>
+          <option value="Test">Test</option>
+          <option value="Promising">Promising</option>
+          <option value="Bad">Bad</option>
+          <option value="No purchases">No purchases</option>
+        </select>
+        <select id="analytics-type-filter" class="select">
+          <option value="">Все типы</option>
+          <option value="Video">Video</option>
+          <option value="Static">Static</option>
+        </select>
+        <input type="text" id="analytics-name-filter" class="select" placeholder="Поиск по названию" />
+      </div>
+
+      <div class="table-scroll">
+        <table class="table analytics-table" id="analytics-table">
+          <thead>
+            <tr>
+              <th>Превью</th>
+              <th data-sort="name">Название</th>
+              <th data-sort="type">Тип</th>
+              <th data-sort="grade">Grade</th>
+              <th data-sort="spend">Spend</th>
+              <th data-sort="purchases">Purchases</th>
+              <th data-sort="cpa">CPA</th>
+              <th data-sort="ctr">CTR</th>
+              <th data-sort="impressions">Impressions</th>
+              <th data-sort="reach">Reach</th>
+              <th data-sort="frequency">Frequency</th>
+              <th data-sort="clicks">Clicks</th>
+              <th data-sort="uniqueClicks">Unique Clicks</th>
+              <th data-sort="linkClicks">Link Clicks</th>
+              <th data-sort="landingViews">Landing Views</th>
+              <th data-sort="costPerLandingView">Cost/Landing</th>
+              <th data-sort="cpm">CPM</th>
+              <th data-sort="cpc">CPC</th>
+              <th data-sort="addToCart">Add to Cart</th>
+              <th data-sort="leads">Leads</th>
+              <th data-sort="purchaseValue">Purchase Value</th>
+              <th data-sort="videoPlays">Video Plays</th>
+              <th data-sort="hookRate">Hook Rate</th>
+              <th data-sort="videoP25">Video 25%</th>
+              <th data-sort="videoP50">Video 50%</th>
+              <th data-sort="videoP75">Video 75%</th>
+              <th data-sort="videoP100">Video 100%</th>
+              <th data-sort="avgWatchTime">Avg Watch</th>
+              <th data-sort="mergedCount">Копий</th>
+              <th>Аккаунты</th>
+              <th>Campaign</th>
+            </tr>
+          </thead>
+          <tbody id="analytics-tbody"></tbody>
+        </table>
+      </div>
     </section>
 
   </main>

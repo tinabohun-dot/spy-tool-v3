@@ -219,3 +219,20 @@ dialog::backdrop { background: rgba(0,0,0,.3); }
 .analytics-account-sub { color: var(--muted); font-size: 13px; margin-bottom: 12px; }
 .grade-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
 .card__meta--wide div { font-size: 12px; }
+
+.analytics-table-toolbar { display: flex; gap: 10px; margin: 4px 0 16px; flex-wrap: wrap; }
+.analytics-table-toolbar input[type="text"] { min-width: 220px; }
+.table-scroll { overflow-x: auto; border-radius: 14px; }
+.analytics-table { white-space: nowrap; }
+.analytics-table th { cursor: pointer; user-select: none; }
+.analytics-table th:hover { color: var(--ink); }
+.analytics-table th.is-sorted::after { content: ' \25BE'; }
+.analytics-table td { font-variant-numeric: tabular-nums; }
+.analytics-table .thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; display: block; }
+.analytics-table__name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grade-row--Alpha { background: #c8e6c920; }
+.grade-row--Scale { background: #bbdefb20; }
+.grade-row--Test { background: #ffe0b220; }
+.grade-row--Promising { background: #e1bee720; }
+.grade-row--Bad { background: #e6b8b820; }
+.grade-row--No-purchases { background: #ffcdd220; }

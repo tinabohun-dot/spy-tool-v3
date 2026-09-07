@@ -524,32 +524,56 @@ const GRADE_BADGE_COLORS = {
 };
 
 let analyticsInited = false;
+let analyticsData = null;
+let analyticsAccountFilter = 'all';
+let analyticsGradeFilter = '';
+let analyticsTypeFilter = '';
+let analyticsNameFilter = '';
+let analyticsSort = { key: 'spend', dir: 'desc' };
 
 function initAnalyticsView() {
   if (analyticsInited) return;
   analyticsInited = true;
-  const today = new Date();
-  const weekAgo = new Date(today.getTime() - 7 * 86400000);
-  $('#analytics-until').value = today.toISOString().slice(0, 10);
-  $('#analytics-since').value = weekAgo.toISOString().slice(0, 10);
+  setAnalyticsPeriod(7);
   loadAnalytics($('#analytics-since').value, $('#analytics-until').value);
 }
 
+function setAnalyticsPeriod(days) {
+  const today = new Date();
+  const from = new Date(today.getTime() - days * 86400000);
+  $('#analytics-until').value = today.toISOString().slice(0, 10);
+  $('#analytics-since').value = from.toISOString().slice(0, 10);
+  $all('#analytics-period-presets .segmented__btn').forEach((b) => b.classList.toggle('is-active', +b.dataset.days === days));
+}
+
+$('#analytics-period-presets').addEventListener('click', (e) => {
+  const btn = e.target.closest('.segmented__btn');
+  if (!btn) return;
+  setAnalyticsPeriod(+btn.dataset.days);
+  loadAnalytics($('#analytics-since').value, $('#analytics-until').value);
+});
+
 $('#analytics-filters').addEventListener('submit', (e) => {
   e.preventDefault();
+  $all('#analytics-period-presets .segmented__btn').forEach((b) => b.classList.remove('is-active'));
   loadAnalytics($('#analytics-since').value, $('#analytics-until').value);
 });
 
 async function loadAnalytics(since, until) {
   $('#analytics-status').textContent = 'Загружаю...';
-  $('#analytics-content').innerHTML = '';
+  $('#analytics-summary').innerHTML = '';
+  $('#analytics-account-chips').innerHTML = '';
+  $('#analytics-tbody').innerHTML = '';
   try {
     const params = new URLSearchParams({ since, until });
     const resp = await fetch(`/api/analytics?${params}`);
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || 'Ошибка запроса');
     $('#analytics-status').textContent = '';
-    renderAnalytics(data);
+    analyticsData = data;
+    analyticsAccountFilter = 'all';
+    renderAnalyticsChips();
+    renderAnalyticsView();
   } catch (err) {
     $('#analytics-status').textContent = 'Ошибка: ' + err.message;
   }
@@ -558,60 +582,122 @@ async function loadAnalytics(since, until) {
 function money(n) {
   return n == null ? '—' : '$' + Math.round(n).toLocaleString('ru-RU');
 }
+function num(n) {
+  return n == null ? '—' : Math.round(n).toLocaleString('ru-RU');
+}
+function pct(n) {
+  return n == null ? '—' : (n * 100).toFixed(2) + '%';
+}
+
+function renderAnalyticsChips() {
+  const chips = ['all', ...analyticsData.accounts];
+  $('#analytics-account-chips').innerHTML = chips.map((name) => `
+    <button type="button" class="page-chip${analyticsAccountFilter === name ? ' is-active' : ''}" data-account="${name}">
+      ${name === 'all' ? 'Все аккаунты' : name}
+    </button>`).join('');
+}
+
+$('#analytics-account-chips').addEventListener('click', (e) => {
+  const chip = e.target.closest('.page-chip');
+  if (!chip) return;
+  analyticsAccountFilter = chip.dataset.account;
+  renderAnalyticsChips();
+  renderAnalyticsView();
+});
+
+$('#analytics-grade-filter').addEventListener('change', (e) => { analyticsGradeFilter = e.target.value; renderAnalyticsView(); });
+$('#analytics-type-filter').addEventListener('change', (e) => { analyticsTypeFilter = e.target.value; renderAnalyticsView(); });
+$('#analytics-name-filter').addEventListener('input', (e) => { analyticsNameFilter = e.target.value.toLowerCase(); renderAnalyticsView(); });
+
+$('#analytics-table thead').addEventListener('click', (e) => {
+  const th = e.target.closest('th[data-sort]');
+  if (!th) return;
+  const key = th.dataset.sort;
+  analyticsSort = analyticsSort.key === key
+    ? { key, dir: analyticsSort.dir === 'desc' ? 'asc' : 'desc' }
+    : { key, dir: 'desc' };
+  renderAnalyticsView();
+});
 
 function renderAnalyticsSummary(summary, count) {
-  return `
-    <div class="panel-grid analytics-summary">
-      <div class="panel-card"><h3>Расход</h3><p class="big-number">${money(summary.totalSpend)}</p></div>
-      <div class="panel-card"><h3>Покупки</h3><p class="big-number">${summary.totalPurchases}</p></div>
-      <div class="panel-card"><h3>CPA</h3><p class="big-number">${summary.overallCpa ? '$' + summary.overallCpa.toFixed(2) : '—'}</p></div>
-      <div class="panel-card">
-        <h3>Success Rate</h3>
-        <p class="big-number">${Math.round(summary.successRate * 100)}%</p>
-        <p class="hint">${summary.successCount} из ${count} креативов</p>
-      </div>
+  $('#analytics-summary').innerHTML = `
+    <div class="panel-card"><h3>Расход</h3><p class="big-number">${money(summary.totalSpend)}</p></div>
+    <div class="panel-card"><h3>Покупки</h3><p class="big-number">${summary.totalPurchases}</p></div>
+    <div class="panel-card"><h3>CPA</h3><p class="big-number">${summary.overallCpa ? '$' + summary.overallCpa.toFixed(2) : '—'}</p></div>
+    <div class="panel-card">
+      <h3>Success Rate</h3>
+      <p class="big-number">${Math.round(summary.successRate * 100)}%</p>
+      <p class="hint">${summary.successCount} из ${count} креативов</p>
     </div>`;
 }
 
-function renderCreativeCard(c) {
+function renderAnalyticsRow(c) {
   const badge = GRADE_BADGE_COLORS[c.grade] || { bg: '#eee', color: '#333' };
-  const extras = [];
-  if (c.mergedCount > 1) extras.push(`<div>×${c.mergedCount} копий</div>`);
-  if (c.accounts?.length > 1) extras.push(`<div>${c.accounts.join(' / ')}</div>`);
+  const rowClass = 'grade-row--' + c.grade.replace(/\s+/g, '-');
   return `
-    <article class="card">
-      <header class="card__header">
-        <span>${c.name}</span>
-        <span class="grade-badge" style="background:${badge.bg};color:${badge.color}">${c.grade}</span>
-      </header>
-      <div class="card__preview">${c.previewUrl ? `<img class="card__thumb" src="${c.previewUrl}" />` : 'нет превью'}</div>
-      <dl class="card__meta card__meta--wide">
-        <div>Spend: ${money(c.spend)}</div>
-        <div>Purchases: ${c.purchases}</div>
-        <div>CPA: ${c.cpa ? '$' + c.cpa.toFixed(2) : '—'}</div>
-        <div>CTR: ${(c.ctr * 100).toFixed(2)}%</div>
-        ${extras.join('')}
-      </dl>
-    </article>`;
+    <tr class="${rowClass}">
+      <td>${c.previewUrl ? `<img class="thumb" src="${c.previewUrl}" />` : ''}</td>
+      <td class="analytics-table__name" title="${c.name}">${c.name}</td>
+      <td>${c.type}</td>
+      <td><span class="grade-badge" style="background:${badge.bg};color:${badge.color}">${c.grade}</span></td>
+      <td>${money(c.spend)}</td>
+      <td>${c.purchases}</td>
+      <td>${c.cpa ? '$' + c.cpa.toFixed(2) : '—'}</td>
+      <td>${pct(c.ctr)}</td>
+      <td>${num(c.impressions)}</td>
+      <td>${num(c.reach)}</td>
+      <td>${c.frequency.toFixed(1)}</td>
+      <td>${num(c.clicks)}</td>
+      <td>${num(c.uniqueClicks)}</td>
+      <td>${num(c.linkClicks)}</td>
+      <td>${num(c.landingViews)}</td>
+      <td>${c.costPerLandingView ? '$' + c.costPerLandingView.toFixed(2) : '—'}</td>
+      <td>${money(c.cpm)}</td>
+      <td>${c.cpc ? '$' + c.cpc.toFixed(2) : '—'}</td>
+      <td>${num(c.addToCart)}</td>
+      <td>${num(c.leads)}</td>
+      <td>${money(c.purchaseValue)}</td>
+      <td>${c.videoPlays == null ? '—' : num(c.videoPlays)}</td>
+      <td>${pct(c.hookRate)}</td>
+      <td>${c.videoP25 == null ? '—' : num(c.videoP25)}</td>
+      <td>${c.videoP50 == null ? '—' : num(c.videoP50)}</td>
+      <td>${c.videoP75 == null ? '—' : num(c.videoP75)}</td>
+      <td>${c.videoP100 == null ? '—' : num(c.videoP100)}</td>
+      <td>${c.avgWatchTime == null ? '—' : c.avgWatchTime.toFixed(1) + 's'}</td>
+      <td>${c.mergedCount > 1 ? '×' + c.mergedCount : '—'}</td>
+      <td>${(c.accounts || []).join(' / ')}</td>
+      <td>${c.campaignName}</td>
+    </tr>`;
 }
 
-function renderCreativeGrid(creatives) {
-  if (!creatives.length) return '<p class="empty-note">Нет данных за выбранный период.</p>';
-  return `<div class="grid grid--ads">${creatives.map(renderCreativeCard).join('')}</div>`;
-}
+function renderAnalyticsView() {
+  if (!analyticsData) return;
+  const source = analyticsAccountFilter === 'all'
+    ? analyticsData.overall
+    : analyticsData.byAccount[analyticsAccountFilter];
 
-function renderAnalytics(data) {
-  let html = '<h2>Все креативы (все аккаунты)</h2>';
-  html += renderAnalyticsSummary(data.overall.summary, data.overall.creatives.length);
-  html += renderCreativeGrid(data.overall.creatives);
+  renderAnalyticsSummary(source.summary, source.creatives.length);
 
-  for (const accName of data.accounts) {
-    const acc = data.byAccount[accName];
-    html += `<h2 class="analytics-account-heading">${accName}</h2>`;
-    html += renderAnalyticsSummary(acc.summary, acc.creatives.length);
-    html += renderCreativeGrid(acc.creatives);
-  }
-  $('#analytics-content').innerHTML = html;
+  let creatives = source.creatives.filter((c) => {
+    if (analyticsGradeFilter && c.grade !== analyticsGradeFilter) return false;
+    if (analyticsTypeFilter && c.type !== analyticsTypeFilter) return false;
+    if (analyticsNameFilter && !c.name.toLowerCase().includes(analyticsNameFilter)) return false;
+    return true;
+  });
+
+  const { key, dir } = analyticsSort;
+  creatives = [...creatives].sort((a, b) => {
+    const av = a[key]; const bv = b[key];
+    let cmp;
+    if (typeof av === 'string' || typeof bv === 'string') cmp = String(av ?? '').localeCompare(String(bv ?? ''));
+    else cmp = (av ?? -Infinity) - (bv ?? -Infinity);
+    return dir === 'asc' ? cmp : -cmp;
+  });
+
+  $all('#analytics-table th[data-sort]').forEach((th) => th.classList.toggle('is-sorted', th.dataset.sort === key));
+  $('#analytics-tbody').innerHTML = creatives.length
+    ? creatives.map(renderAnalyticsRow).join('')
+    : '<tr><td colspan="30" class="empty-note">Нет данных по выбранным фильтрам.</td></tr>';
 }
 
 // ---------- Старт ----------
