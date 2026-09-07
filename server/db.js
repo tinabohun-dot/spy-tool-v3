@@ -57,6 +57,15 @@ CREATE TABLE IF NOT EXISTS rank_history (
 
 CREATE INDEX IF NOT EXISTS idx_snapshots_page_date ON ad_snapshots(ad_page_id, fetch_date);
 CREATE INDEX IF NOT EXISTS idx_rank_page_ad ON rank_history(ad_page_id, ad_id);
+
+-- Какие креативы из своей Аналитики (metaMarketing) уже получили грейд
+-- Promising+ и мы уже написали о них в Slack — чтобы не слать одно и то же
+-- уведомление на каждой ежедневной проверке.
+CREATE TABLE IF NOT EXISTS notified_top_creatives (
+  creative_key TEXT PRIMARY KEY,
+  grade TEXT NOT NULL,
+  notified_at TEXT NOT NULL
+);
 `);
 
 // Разбивка eu_total_reach по стране/возрасту/полу (age_country_gender_reach_breakdown

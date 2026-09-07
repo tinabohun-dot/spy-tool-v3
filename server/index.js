@@ -13,6 +13,7 @@ const analytics = require('./analytics');
 const jobStatus = require('./jobStatus');
 const metaMarketing = require('./metaMarketing');
 const airtable = require('./airtable');
+const { checkNewTopCreatives } = require('./slackAlerts');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -294,6 +295,13 @@ cron.schedule(schedule, async () => {
   }
   console.log('[cron] Готово');
 });
+
+// Каждое утро в 11:00 по Варшаве — проверяем свои креативы (Аналитика) за
+// прошедшие сутки и шлём в Slack те, что поднялись до Promising+ или выше.
+cron.schedule('0 11 * * *', async () => {
+  console.log('[cron] Проверка новых топ-креативов для Slack:', new Date().toISOString());
+  try { await checkNewTopCreatives(); } catch (e) { console.error('[cron] Ошибка проверки топ-креативов:', e.message); }
+}, { timezone: 'Europe/Warsaw' });
 
 app.listen(PORT, () => {
   console.log(`Сервер запущен: http://localhost:${PORT}`);

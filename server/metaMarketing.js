@@ -438,5 +438,6 @@ async function attachPreviews(creatives) {
 module.exports = {
   accounts, fetchAllAccountsInsights, fetchAccountInsights,
   groupRowsByCreative, buildCreativeEntry, summarize, attachPreviews,
-  fetchLaunchedTaskNumbers, fetchPlatformBreakdown, fetchDemographics
+  fetchLaunchedTaskNumbers, fetchPlatformBreakdown, fetchDemographics,
+  SUCCESS_GRADES
 };
