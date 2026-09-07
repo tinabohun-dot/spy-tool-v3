@@ -315,6 +315,32 @@ const CATEGORY_COLORS = [
   '#00acc1', '#e91e8c', '#8d6e63', '#607d8b', '#c9a227'
 ];
 
+// Как renderBarList, но каждая строка кликабельна и разворачивает список
+// конкретных задач (Task ID + название), которые попали в счётчик этого
+// человека — чтобы можно было сверить цифру со списком задач в Airtable.
+function renderBarListWithTasks(sel, counts, tasksByKey) {
+  let entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  const max = Math.max(1, ...entries.map((e) => e[1]));
+  $(sel).innerHTML = entries.map(([label, val], i) => {
+    const tasks = tasksByKey?.[label] || [];
+    const taskList = tasks.map((t) => `<li>${t.taskId != null ? `#${t.taskId}` : ''} ${t.taskName || ''}</li>`).join('');
+    return `
+      <div class="bar-row bar-row--expandable" data-key="${label}">
+        <span class="bar-row__label">${label}</span>
+        <span class="bar-row__track"><span class="bar-row__fill" style="width:${(val / max) * 100}%;background:${CATEGORY_COLORS[i % CATEGORY_COLORS.length]}"></span></span>
+        <span class="bar-row__value">${val}</span>
+      </div>
+      <ul class="bar-row__tasks" hidden>${taskList}</ul>`;
+  }).join('') || '<p class="hint">Пока нет данных</p>';
+}
+
+document.addEventListener('click', (e) => {
+  const row = e.target.closest('.bar-row--expandable');
+  if (!row) return;
+  const list = row.nextElementSibling;
+  if (list && list.classList.contains('bar-row__tasks')) list.hidden = !list.hidden;
+});
+
 const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
 
 function renderBarList(sel, obj, sortByValue = true, opts = {}) {
@@ -597,7 +623,7 @@ const analyticsSubtabLoaded = {};
 function initAnalyticsView() {
   if (analyticsInited) return;
   analyticsInited = true;
-  setAnalyticsPeriod(7);
+  setAnalyticsPeriod(0);
   loadActiveSubtab();
 }
 
@@ -976,7 +1002,7 @@ async function loadProduction(since, until) {
       { label: 'Ещё нет', value: data.notLaunched, color: '#c9c9c4' }
     ]);
 
-    renderBarList('#production-designer-bars', data.byDesigner);
+    renderBarListWithTasks('#production-designer-bars', data.byDesigner, data.byDesignerTasks);
     renderBarList('#production-funnel-bars', data.byFunnel);
   } catch (err) {
     $('#analytics-status').textContent = 'Ошибка: ' + err.message;
@@ -1006,7 +1032,7 @@ function renderDailyReport(prefix, data) {
     { label: 'Static', value: data.static, color: '#d95f2b' }
   ]);
 
-  renderBarList(`#${prefix}-bars`, data.byCp);
+  renderBarListWithTasks(`#${prefix}-bars`, data.byCp, data.byCpTasks);
 }
 
 async function loadCp(since, until) {

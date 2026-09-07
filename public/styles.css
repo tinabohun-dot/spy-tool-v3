@@ -124,6 +124,9 @@ p { margin: 0; }
 .bar-row__track { flex: 1; background: #eee; border-radius: 999px; height: 8px; overflow: hidden; }
 .bar-row__fill { display: block; background: var(--accent); height: 100%; }
 .bar-row__value { width: 36px; text-align: right; }
+.bar-row--expandable { cursor: pointer; }
+.bar-row__tasks { margin: 0 0 8px 98px; padding: 0; list-style: none; font-size: 12px; color: var(--muted); }
+.bar-row__tasks li { padding: 2px 0; }
 
 .table { width: 100%; border-collapse: collapse; background: var(--panel); border-radius: 14px; overflow: hidden; }
 .table th, .table td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 13px; }
@@ -228,11 +231,20 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
 .analytics-table-toolbar { display: flex; gap: 10px; margin: 4px 0 16px; flex-wrap: wrap; }
 .analytics-table-toolbar input[type="text"] { min-width: 220px; }
 .table-scroll { overflow-x: auto; border-radius: 14px; }
+/* Any non-"visible" overflow on an ancestor (including just overflow-x:auto —
+   the browser silently forces the other axis to "auto" too) becomes the
+   containing block for position:sticky descendants. That broke the table
+   header: it stuck relative to this box's own top instead of the viewport,
+   landing deep inside the row list. Fix: give this box its own bounded height
+   and let IT scroll internally, so "sticky" here means what it should. */
+.table-scroll:has(.analytics-table) {
+  max-height: calc(100vh - var(--analytics-sticky-offset, 0px) - 32px);
+  overflow-y: auto;
+}
 .analytics-table { white-space: nowrap; }
 .analytics-sticky-top { position: sticky; top: 0; z-index: 3; background: var(--bg); padding-top: 4px; }
 .analytics-table th {
-  cursor: pointer; user-select: none; position: sticky; z-index: 2; background: var(--panel);
-  top: var(--analytics-sticky-offset, 0px);
+  cursor: pointer; user-select: none; position: sticky; top: 0; z-index: 2; background: var(--panel);
 }
 .analytics-table th:hover { color: var(--ink); }
 .analytics-table th.is-sorted::after { content: ' \25BE'; }

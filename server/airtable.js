@@ -101,12 +101,17 @@ function previousEquivalentPeriod(since, until) {
 // видео/статика, разбивка по дизайнерам и воронкам, % к предыдущему периоду
 // такой же длины, и сколько из произведённого реально "напущено" в Meta
 // (Task ID встречается среди реальных объявлений в аккаунтах).
+function pushTask(map, key, t) {
+  (map[key] ||= []).push({ taskId: t.taskId, taskName: t.taskName });
+}
+
 async function productionReport(since, until, launchedTaskNumbers) {
   const { tasks } = await loadTasks();
   const inWindow = tasks.filter((t) => inRange(t.whenToTest, since, until));
 
   const byDay = {};
   const byDesigner = {};
+  const byDesignerTasks = {};
   const byFunnel = {};
   let video = 0; let staticCount = 0; let launched = 0;
 
@@ -118,6 +123,7 @@ async function productionReport(since, until, launchedTaskNumbers) {
 
     const d = t.designer || '—';
     byDesigner[d] = (byDesigner[d] || 0) + 1;
+    pushTask(byDesignerTasks, d, t);
 
     const funnel = t.funnel || '—';
     byFunnel[funnel] = (byFunnel[funnel] || 0) + 1;
@@ -139,6 +145,7 @@ async function productionReport(since, until, launchedTaskNumbers) {
     notLaunched: inWindow.length - launched,
     byDay: Object.entries(byDay).map(([day, count]) => ({ day, count })).sort((a, b) => a.day.localeCompare(b.day)),
     byDesigner: Object.fromEntries(Object.entries(byDesigner).sort((a, b) => b[1] - a[1])),
+    byDesignerTasks,
     byFunnel: Object.fromEntries(Object.entries(byFunnel).sort((a, b) => b[1] - a[1]))
   };
 }
@@ -152,6 +159,7 @@ async function cpReport(since, until) {
 
   const byDay = {};
   const byCp = {};
+  const byCpTasks = {};
   let video = 0; let staticCount = 0;
 
   for (const t of inWindow) {
@@ -160,6 +168,7 @@ async function cpReport(since, until) {
     if (t.creoType === 'Video') video++; else if (t.creoType === 'Static') staticCount++;
     const cp = t.cp || '—';
     byCp[cp] = (byCp[cp] || 0) + 1;
+    pushTask(byCpTasks, cp, t);
   }
 
   const prevPeriod = previousEquivalentPeriod(since, until);
@@ -173,7 +182,8 @@ async function cpReport(since, until) {
     video,
     static: staticCount,
     byDay: Object.entries(byDay).map(([day, count]) => ({ day, count })).sort((a, b) => a.day.localeCompare(b.day)),
-    byCp: Object.fromEntries(Object.entries(byCp).sort((a, b) => b[1] - a[1]))
+    byCp: Object.fromEntries(Object.entries(byCp).sort((a, b) => b[1] - a[1])),
+    byCpTasks
   };
 }
 
@@ -186,6 +196,7 @@ async function uaReport(since, until) {
 
   const byDay = {};
   const byCp = {};
+  const byCpTasks = {};
   let video = 0; let staticCount = 0;
 
   for (const t of inWindow) {
@@ -194,6 +205,7 @@ async function uaReport(since, until) {
     if (t.creoType === 'Video') video++; else if (t.creoType === 'Static') staticCount++;
     const cp = t.cp || '—';
     byCp[cp] = (byCp[cp] || 0) + 1;
+    pushTask(byCpTasks, cp, t);
   }
 
   const prevPeriod = previousEquivalentPeriod(since, until);
@@ -207,7 +219,8 @@ async function uaReport(since, until) {
     video,
     static: staticCount,
     byDay: Object.entries(byDay).map(([day, count]) => ({ day, count })).sort((a, b) => a.day.localeCompare(b.day)),
-    byCp: Object.fromEntries(Object.entries(byCp).sort((a, b) => b[1] - a[1]))
+    byCp: Object.fromEntries(Object.entries(byCp).sort((a, b) => b[1] - a[1])),
+    byCpTasks
   };
 }
 
