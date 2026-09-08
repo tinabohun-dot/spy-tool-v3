@@ -101,6 +101,11 @@ async function checkNewTopCreatives() {
 
   console.log(`[slack-alert] ${since}: ${topCreatives.length} креативов Promising+, ${upgraded.length} поднялись по грейду`);
 
+  if (!upgraded.length) {
+    await postToSlack({ text: `За ${since} нет креативов, которые поднялись по грейду.` });
+    return;
+  }
+
   for (const c of upgraded) {
     await postCreativeAlert(c);
     markNotified(c.name, c.grade);
