@@ -63,7 +63,6 @@ async function loadTasks() {
     return {
       recordId: r.id,
       taskId: f['Task ID'] ?? null,
-      driveUrl: f['Creatives GDrive URL'] || null,
       taskName: f['Task Name'] || '',
       creoType: f['Creo Type'] === 'V' ? 'Video' : f['Creo Type'] === 'S' ? 'Static' : (f['Creo Type'] || null),
       cp: f['CP'] || null,

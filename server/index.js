@@ -14,6 +14,7 @@ const jobStatus = require('./jobStatus');
 const metaMarketing = require('./metaMarketing');
 const airtable = require('./airtable');
 const { checkNewTopCreatives } = require('./slackAlerts');
+const googleDrive = require('./googleDrive');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -296,12 +297,31 @@ cron.schedule(schedule, async () => {
   console.log('[cron] Готово');
 });
 
-// Каждое утро в 11:00 по Варшаве — проверяем свои креативы (Аналитика) за
+// Каждое утро в 10:00 по Варшаве — проверяем свои креативы (Аналитика) за
 // прошедшие сутки и шлём в Slack те, что поднялись до Promising+ или выше.
-cron.schedule('0 11 * * *', async () => {
+cron.schedule('0 10 * * *', async () => {
   console.log('[cron] Проверка новых топ-креативов для Slack:', new Date().toISOString());
   try { await checkNewTopCreatives(); } catch (e) { console.error('[cron] Ошибка проверки топ-креативов:', e.message); }
 }, { timezone: 'Europe/Warsaw' });
+
+// Разовая авторизация для поиска видео в Google Drive по имени креатива
+// (используется в Slack-уведомлениях) — открой /oauth2/start в браузере,
+// разреши доступ, и полученный refresh_token сохрани в server/.env как
+// GOOGLE_REFRESH_TOKEN.
+app.get('/oauth2/start', (req, res) => {
+  try { res.redirect(googleDrive.getAuthUrl()); } catch (e) { res.status(500).send(e.message); }
+});
+
+app.get('/oauth2/callback', async (req, res) => {
+  if (req.query.error) return res.status(400).send('Google вернул ошибку: ' + req.query.error);
+  try {
+    const tokens = await googleDrive.exchangeCodeForTokens(req.query.code);
+    console.log('GOOGLE_REFRESH_TOKEN:', tokens.refresh_token);
+    res.send('Готово! Refresh token выведен в консоль сервера (в терминале) — добавь его в server/.env как GOOGLE_REFRESH_TOKEN и перезапусти сервер.');
+  } catch (e) {
+    res.status(500).send('Ошибка: ' + e.message);
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Сервер запущен: http://localhost:${PORT}`);

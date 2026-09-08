@@ -5,23 +5,7 @@
 // уведомление на следующих проверках.
 const db = require('./db');
 const metaMarketing = require('./metaMarketing');
-const airtable = require('./airtable');
-
-// Достаём ссылку на видео в Google Drive по ведущему номеру задачи в имени
-// креатива (как и везде в приложении — "398_V_N1_..." -> 398), сверяясь с
-// полем "Creatives GDrive URL" в Airtable.
-async function findDriveUrl(creativeName) {
-  const m = (creativeName || '').match(/^(\d+)/);
-  if (!m) return null;
-  try {
-    const { tasks } = await airtable.loadTasks();
-    const task = tasks.find((t) => String(t.taskId) === m[1]);
-    return task?.driveUrl || null;
-  } catch (e) {
-    console.error('[slack-alert] Не удалось получить GDrive-ссылку из Airtable:', e.message);
-    return null;
-  }
-}
+const googleDrive = require('./googleDrive');
 
 function warsawDateString(daysAgo = 0) {
   const now = new Date(Date.now() - daysAgo * 86400000);
@@ -39,6 +23,17 @@ const GRADE_COLORS = {
   'No purchases': '#b71c1c'
 };
 
+// Slack не умеет красить отдельные слова в тексте сообщения — ближайший
+// рабочий аналог цвета грейда прямо у слова это цветной эмодзи-кружок.
+const GRADE_EMOJI = {
+  'Alpha': '🟢',
+  'Scale': '🔵',
+  'Test': '🟠',
+  'Promising': '🟣',
+  'Bad': '🔴',
+  'No purchases': '🔴'
+};
+
 async function postToSlack(payload) {
   const webhookUrl = process.env.SLACK_WEBHOOK_URL;
   if (!webhookUrl) { console.warn('SLACK_WEBHOOK_URL не задан в server/.env — пропускаю отправку'); return; }
@@ -48,16 +43,18 @@ async function postToSlack(payload) {
   if (!resp.ok) console.error('Slack webhook ответил ошибкой:', resp.status, await resp.text().catch(() => ''));
 }
 
-async function postCreativeAlert(c, headline, driveUrl) {
+async function postCreativeAlert(c, headline) {
+  const emoji = GRADE_EMOJI[c.grade] || '⚪';
   const lines = [
-    `Grade: *${c.grade}* · Воронка: ${c.funnel || '—'} · Аккаунты: ${(c.accounts || []).join(', ')}`,
+    `Grade: ${emoji} *${c.grade}* · Воронка: ${c.funnel || '—'} · Аккаунты: ${(c.accounts || []).join(', ')}`,
     `Spend: $${Math.round(c.spend)} · Purchases: ${c.purchases} · CPA: ${c.cpa ? '$' + c.cpa.toFixed(2) : '—'}`
   ];
-  if (driveUrl) lines.push(driveUrl);
+  const driveUrl = await googleDrive.findFileLinkByName(c.name);
   await postToSlack({
     attachments: [{
       color: GRADE_COLORS[c.grade] || '#999999',
       title: `${headline}: ${c.name}`,
+      ...(driveUrl ? { title_link: driveUrl } : {}),
       text: lines.join('\n'),
       ...(c.previewUrl ? { image_url: c.previewUrl } : {})
     }]
@@ -105,8 +102,7 @@ async function checkNewTopCreatives() {
   for (const c of upgraded) {
     const prevGrade = lastKnownGrade(c.name);
     const headline = prevGrade ? `🚀 ${prevGrade} → ${c.grade}` : `🚀 Новый в ${c.grade}`;
-    const driveUrl = await findDriveUrl(c.name);
-    await postCreativeAlert(c, headline, driveUrl);
+    await postCreativeAlert(c, headline);
     markNotified(c.name, c.grade);
   }
 }
@@ -124,8 +120,7 @@ async function resendTopCreatives(daysAgo = 1) {
 
   console.log(`[slack-alert] resend ${day}: ${topCreatives.length} креативов Promising+`);
   for (const c of topCreatives) {
-    const driveUrl = await findDriveUrl(c.name);
-    await postCreativeAlert(c, '🚀 Топ-креатив', driveUrl);
+    await postCreativeAlert(c, '🚀 Топ-креатив');
   }
 }
 
