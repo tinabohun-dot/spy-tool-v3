@@ -58,29 +58,29 @@ app.post('/api/saved', (req, res) => {
 });
 app.delete('/api/saved/:id', (req, res) => res.json(storage.remove(req.params.id)));
 
-app.get('/api/scaling', (req, res) => res.json(analytics.scalingCreatives()));
+app.get('/api/scaling', async (req, res) => res.json(await analytics.scalingCreatives()));
 
-app.get('/api/brands', (req, res) => {
-  const brands = db.prepare('SELECT * FROM brands ORDER BY created_at DESC').all();
-  const pages = db.prepare('SELECT * FROM ad_pages').all();
+app.get('/api/brands', async (req, res) => {
+  const brands = await db.prepare('SELECT * FROM brands ORDER BY created_at DESC').all();
+  const pages = await db.prepare('SELECT * FROM ad_pages').all();
   res.json(
-    brands.map((b) => ({
+    await Promise.all(brands.map(async (b) => ({
       ...b,
       pages: pages.filter((p) => p.brand_id === b.id),
-      stats: analytics.libraryStats(b.id)
-    }))
+      stats: await analytics.libraryStats(b.id)
+    })))
   );
 });
 
-app.post('/api/brands', (req, res) => {
+app.post('/api/brands', async (req, res) => {
   const { name, category } = req.body;
   if (!name) return res.status(400).json({ error: 'Нужно имя бренда' });
-  const info = db.prepare('INSERT INTO brands (name, category) VALUES (?, ?)').run(name, category || null);
-  res.json(db.prepare('SELECT * FROM brands WHERE id = ?').get(info.lastInsertRowid));
+  const info = await db.prepare('INSERT INTO brands (name, category) VALUES (?, ?)').run(name, category || null);
+  res.json(await db.prepare('SELECT * FROM brands WHERE id = ?').get(info.lastInsertRowid));
 });
 
-app.delete('/api/brands/:id', (req, res) => {
-  db.prepare('DELETE FROM brands WHERE id = ?').run(req.params.id);
+app.delete('/api/brands/:id', async (req, res) => {
+  await db.prepare('DELETE FROM brands WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
 
@@ -98,9 +98,9 @@ app.post('/api/brands/:brandId/pages', async (req, res) => {
     const pageId = extractPageId(input);
     if (!pageId) return res.status(400).json({ error: 'Не удалось распознать page_id из введённой строки' });
 
-    db.prepare('INSERT OR IGNORE INTO ad_pages (brand_id, platform, page_id, page_name) VALUES (?,?,?,?)')
+    await db.prepare('INSERT OR IGNORE INTO ad_pages (brand_id, platform, page_id, page_name) VALUES (?,?,?,?)')
       .run(req.params.brandId, platform, pageId, page_name || null);
-    const adPage = db.prepare('SELECT * FROM ad_pages WHERE platform = ? AND page_id = ?').get(platform, pageId);
+    const adPage = await db.prepare('SELECT * FROM ad_pages WHERE platform = ? AND page_id = ?').get(platform, pageId);
     fetchSnapshotForAdPage(adPage).catch((e) => console.error('Первичный сбор снепшота не удался:', e.message));
     res.json(adPage);
   } catch (err) {
@@ -109,11 +109,11 @@ app.post('/api/brands/:brandId/pages', async (req, res) => {
   }
 });
 
-app.delete('/api/pages/:id', (req, res) => { db.prepare('DELETE FROM ad_pages WHERE id = ?').run(req.params.id); res.json({ ok: true }); });
+app.delete('/api/pages/:id', async (req, res) => { await db.prepare('DELETE FROM ad_pages WHERE id = ?').run(req.params.id); res.json({ ok: true }); });
 
 app.post('/api/brands/:brandId/refresh', async (req, res) => {
   const days = +req.query.days || 7;
-  const pages = db.prepare('SELECT * FROM ad_pages WHERE brand_id = ?').all(req.params.brandId);
+  const pages = await db.prepare('SELECT * FROM ad_pages WHERE brand_id = ?').all(req.params.brandId);
   const results = [];
   for (const p of pages) {
     try {
@@ -126,27 +126,26 @@ app.post('/api/brands/:brandId/refresh', async (req, res) => {
   res.json({ results });
 });
 
-app.get('/api/brands/:brandId/metrics', (req, res) => res.json(analytics.metrics(req.params.brandId, +req.query.days || 7)));
-app.get('/api/brands/:brandId/eu-reach', (req, res) => res.json(analytics.euReach(req.params.brandId)));
-app.get('/api/brands/:brandId/trending', (req, res) => res.json(analytics.trending(req.params.brandId)));
-app.get('/api/brands/:brandId/winning', (req, res) => res.json(analytics.winningAds(req.params.brandId)));
-app.get('/api/brands/:brandId/creative-tests', (req, res) => res.json(analytics.creativeTests(req.params.brandId)));
-app.get('/api/brands/:brandId/ads', (req, res) => res.json(analytics.creativesGrid(req.params.brandId)));
+app.get('/api/brands/:brandId/metrics', async (req, res) => res.json(await analytics.metrics(req.params.brandId, +req.query.days || 7)));
+app.get('/api/brands/:brandId/eu-reach', async (req, res) => res.json(await analytics.euReach(req.params.brandId)));
+app.get('/api/brands/:brandId/trending', async (req, res) => res.json(await analytics.trending(req.params.brandId)));
+app.get('/api/brands/:brandId/winning', async (req, res) => res.json(await analytics.winningAds(req.params.brandId)));
+app.get('/api/brands/:brandId/creative-tests', async (req, res) => res.json(await analytics.creativeTests(req.params.brandId)));
+app.get('/api/brands/:brandId/ads', async (req, res) => res.json(await analytics.creativesGrid(req.params.brandId)));
 
 // Статус сбора снепшотов по каждой Ad Page: идёт ли сейчас сбор, сколько уже
 // обработано, и чем закончился последний запуск — иначе непонятно, "просто
 // нет данных" это или "ещё собирается".
-app.get('/api/jobs', (req, res) => {
-  const pages = db.prepare(`
+app.get('/api/jobs', async (req, res) => {
+  const pages = await db.prepare(`
     SELECT ad_pages.id, ad_pages.page_name, ad_pages.page_id, ad_pages.brand_id, brands.name as brand_name
     FROM ad_pages JOIN brands ON brands.id = ad_pages.brand_id
   `).all();
-  const dataByPageId = Object.fromEntries(
-    db.prepare(`
-      SELECT ad_page_id, COUNT(DISTINCT ad_id) as existingCount, MAX(fetch_date) as lastFetchDate
-      FROM ad_snapshots GROUP BY ad_page_id
-    `).all().map((r) => [r.ad_page_id, r])
-  );
+  const snapshotCounts = await db.prepare(`
+    SELECT ad_page_id, COUNT(DISTINCT ad_id) as existingCount, MAX(fetch_date) as lastFetchDate
+    FROM ad_snapshots GROUP BY ad_page_id
+  `).all();
+  const dataByPageId = Object.fromEntries(snapshotCounts.map((r) => [r.ad_page_id, r]));
   const jobsByPageId = Object.fromEntries(jobStatus.listJobs().map((j) => [j.pageId, j]));
   res.json(pages.map((p) => ({
     pageId: p.id,
@@ -279,8 +278,8 @@ app.get('/api/analytics/users', async (req, res) => {
 // Запустить сбор снепшота для одной конкретной Ad Page (не всего бренда) —
 // пригодится, когда во вкладке "Сбор данных" видно, что по странице нет
 // данных или сбор давно не запускался.
-app.post('/api/pages/:pageId/refresh', (req, res) => {
-  const page = db.prepare('SELECT * FROM ad_pages WHERE id = ?').get(req.params.pageId);
+app.post('/api/pages/:pageId/refresh', async (req, res) => {
+  const page = await db.prepare('SELECT * FROM ad_pages WHERE id = ?').get(req.params.pageId);
   if (!page) return res.status(404).json({ error: 'Ad Page не найдена' });
   const days = +req.query.days || 7;
   fetchSnapshotForAdPage(page, days).catch((e) => console.error(`Сбор не удался для page_id=${page.page_id}:`, e.message));
@@ -290,7 +289,7 @@ app.post('/api/pages/:pageId/refresh', (req, res) => {
 const schedule = process.env.CRON_SCHEDULE || '0 3 * * *';
 cron.schedule(schedule, async () => {
   console.log('[cron] Старт ежедневного сбора снепшотов:', new Date().toISOString());
-  const pages = db.prepare('SELECT * FROM ad_pages').all();
+  const pages = await db.prepare('SELECT * FROM ad_pages').all();
   for (const p of pages) {
     try { await fetchSnapshotForAdPage(p); } catch (e) { console.error(`[cron] Ошибка для page_id=${p.page_id}:`, e.message); }
   }
@@ -323,9 +322,14 @@ app.get('/oauth2/callback', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Сервер запущен: http://localhost:${PORT}`);
-  if (!process.env.META_ACCESS_TOKEN) console.warn('⚠️  META_ACCESS_TOKEN не найден в .env — запросы к Meta API будут падать с ошибкой.');
+db.ready.then(() => {
+  app.listen(PORT, () => {
+    console.log(`Сервер запущен: http://localhost:${PORT}`);
+    if (!process.env.META_ACCESS_TOKEN) console.warn('⚠️  META_ACCESS_TOKEN не найден в .env — запросы к Meta API будут падать с ошибкой.');
+  });
+}).catch((err) => {
+  console.error('Не удалось применить миграции БД:', err);
+  process.exit(1);
 });
 
 // Без этого при штатной остановке (Ctrl+C / kill) процесс headless-браузера

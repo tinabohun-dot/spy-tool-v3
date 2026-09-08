@@ -69,18 +69,19 @@ async function postCreativeAlert(c) {
 // же грейде или просел ниже — молчим.
 const GRADE_RANK = { 'Alpha': 5, 'Scale': 4, 'Test': 3, 'Promising': 2, 'Bad': 1, 'No purchases': 0 };
 
-function lastKnownGrade(key) {
-  return db.prepare('SELECT grade FROM notified_top_creatives WHERE creative_key = ?').get(key)?.grade || null;
+async function lastKnownGrade(key) {
+  const row = await db.prepare('SELECT grade FROM notified_top_creatives WHERE creative_key = ?').get(key);
+  return row?.grade || null;
 }
 
-function isGradeUpgrade(key, grade) {
-  const prevGrade = lastKnownGrade(key);
+async function isGradeUpgrade(key, grade) {
+  const prevGrade = await lastKnownGrade(key);
   if (!prevGrade) return true;
   return (GRADE_RANK[grade] ?? -1) > (GRADE_RANK[prevGrade] ?? -1);
 }
 
-function markNotified(key, grade) {
-  db.prepare(`
+async function markNotified(key, grade) {
+  await db.prepare(`
     INSERT INTO notified_top_creatives (creative_key, grade, notified_at) VALUES (?, ?, ?)
     ON CONFLICT(creative_key) DO UPDATE SET grade = excluded.grade, notified_at = excluded.notified_at
   `).run(key, grade, new Date().toISOString());
@@ -96,7 +97,8 @@ async function checkNewTopCreatives() {
   const creatives = metaMarketing.groupRowsByCreative(allRows).map(metaMarketing.buildCreativeEntry);
 
   const topCreatives = creatives.filter((c) => metaMarketing.SUCCESS_GRADES.includes(c.grade));
-  const upgraded = topCreatives.filter((c) => isGradeUpgrade(c.name, c.grade));
+  const upgradeFlags = await Promise.all(topCreatives.map((c) => isGradeUpgrade(c.name, c.grade)));
+  const upgraded = topCreatives.filter((_, i) => upgradeFlags[i]);
   await metaMarketing.attachPreviews(upgraded);
 
   console.log(`[slack-alert] ${since}: ${topCreatives.length} креативов Promising+, ${upgraded.length} поднялись по грейду`);
@@ -108,7 +110,7 @@ async function checkNewTopCreatives() {
 
   for (const c of upgraded) {
     await postCreativeAlert(c);
-    markNotified(c.name, c.grade);
+    await markNotified(c.name, c.grade);
   }
 }
 

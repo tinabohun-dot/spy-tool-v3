@@ -71,7 +71,7 @@ async function runFetch(adPage, days = 7) {
       link_caption: (ad.ad_creative_link_captions || [])[0] || null,
       duplicate_group: hashText(body), fetch_date: date
     };
-    insertSnapshot.run(row);
+    await insertSnapshot.run(row);
     jobStatus.incrementProcessed(adPage.id);
     return row;
   }));
@@ -81,10 +81,9 @@ async function runFetch(adPage, days = 7) {
     INSERT INTO rank_history (ad_page_id, ad_id, fetch_date, rank) VALUES (@ad_page_id, @ad_id, @fetch_date, @rank)
     ON CONFLICT(ad_page_id, ad_id, fetch_date) DO UPDATE SET rank=excluded.rank
   `);
-  const insertRanks = db.transaction((items) => {
-    items.forEach((item, idx) => insertRank.run({ ad_page_id: item.ad_page_id, ad_id: item.ad_id, fetch_date: date, rank: idx + 1 }));
-  });
-  insertRanks(ranked);
+  for (const [idx, item] of ranked.entries()) {
+    await insertRank.run({ ad_page_id: item.ad_page_id, ad_id: item.ad_id, fetch_date: date, rank: idx + 1 });
+  }
 
   jobStatus.finishJob(adPage.id, rows.length);
   return { count: rows.length, date };

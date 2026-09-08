@@ -1,26 +1,27 @@
 const db = require('./db');
 
-function pageIdsForBrand(brandId) {
-  return db.prepare('SELECT id FROM ad_pages WHERE brand_id = ?').all(brandId).map((r) => r.id);
+async function pageIdsForBrand(brandId) {
+  const rows = await db.prepare('SELECT id FROM ad_pages WHERE brand_id = ?').all(brandId);
+  return rows.map((r) => r.id);
 }
 
-function latestSnapshot(pageIds) {
+async function latestSnapshot(pageIds) {
   if (!pageIds.length) return [];
   const ph = pageIds.map(() => '?').join(',');
-  const maxDateRow = db.prepare(`SELECT MAX(fetch_date) as d FROM ad_snapshots WHERE ad_page_id IN (${ph})`).get(...pageIds);
+  const maxDateRow = await db.prepare(`SELECT MAX(fetch_date) as d FROM ad_snapshots WHERE ad_page_id IN (${ph})`).get(...pageIds);
   if (!maxDateRow?.d) return [];
   return db.prepare(`SELECT * FROM ad_snapshots WHERE ad_page_id IN (${ph}) AND fetch_date = ?`).all(...pageIds, maxDateRow.d);
 }
 
-function metrics(brandId, days = 7) {
-  const pageIds = pageIdsForBrand(brandId);
+async function metrics(brandId, days = 7) {
+  const pageIds = await pageIdsForBrand(brandId);
   if (!pageIds.length) return null;
   const ph = pageIds.map(() => '?').join(',');
-  const byDay = db.prepare(`
+  const byDay = await db.prepare(`
     SELECT substr(delivery_start,1,10) as day, format, COUNT(*) as n FROM ad_snapshots
     WHERE ad_page_id IN (${ph}) AND delivery_start IS NOT NULL GROUP BY day, format ORDER BY day ASC
   `).all(...pageIds);
-  const rows = latestSnapshot(pageIds);
+  const rows = await latestSnapshot(pageIds);
   const formatCount = { image: 0, video: 0, unknown: 0 };
   const langCount = {}; const platformCount = {}; const destinationCount = {};
   for (const r of rows) {
@@ -47,10 +48,10 @@ function metrics(brandId, days = 7) {
   };
 }
 
-function euReach(brandId) {
-  const pageIds = pageIdsForBrand(brandId);
+async function euReach(brandId) {
+  const pageIds = await pageIdsForBrand(brandId);
   if (!pageIds.length) return null;
-  const rows = latestSnapshot(pageIds).filter((r) => r.eu_total_reach != null);
+  const rows = (await latestSnapshot(pageIds)).filter((r) => r.eu_total_reach != null);
   const totalReach = rows.reduce((s, r) => s + (r.eu_total_reach || 0), 0);
 
   const gender = { male: 0, female: 0, unknown: 0 };
@@ -72,12 +73,12 @@ function euReach(brandId) {
   return { totalReach, adsWithReachData: rows.length, gender, age, countries };
 }
 
-function trending(brandId, days = 14) {
-  const pageIds = pageIdsForBrand(brandId);
+async function trending(brandId, days = 14) {
+  const pageIds = await pageIdsForBrand(brandId);
   if (!pageIds.length) return [];
   const ph = pageIds.map(() => '?').join(',');
   const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-  const history = db.prepare(`
+  const history = await db.prepare(`
     SELECT ad_id, fetch_date, rank FROM rank_history WHERE ad_page_id IN (${ph}) AND fetch_date >= ? ORDER BY ad_id, fetch_date ASC
   `).all(...pageIds, since);
   const byAd = {};
@@ -91,10 +92,10 @@ function trending(brandId, days = 14) {
   return result.sort((a, b) => b.rankChange - a.rankChange).slice(0, 20);
 }
 
-function winningAds(brandId, limit = 20) {
-  const pageIds = pageIdsForBrand(brandId);
+async function winningAds(brandId, limit = 20) {
+  const pageIds = await pageIdsForBrand(brandId);
   if (!pageIds.length) return [];
-  const rows = latestSnapshot(pageIds);
+  const rows = await latestSnapshot(pageIds);
   const dupCounts = {};
   for (const r of rows) dupCounts[r.duplicate_group] = (dupCounts[r.duplicate_group] || 0) + 1;
   const maxReach = Math.max(1, ...rows.map((r) => r.eu_total_reach || 0));
@@ -110,8 +111,8 @@ function winningAds(brandId, limit = 20) {
   return scored.sort((a, b) => b.score - a.score).slice(0, limit);
 }
 
-function creativeTests(brandId) {
-  const pageIds = pageIdsForBrand(brandId);
+async function creativeTests(brandId) {
+  const pageIds = await pageIdsForBrand(brandId);
   if (!pageIds.length) return [];
   const ph = pageIds.map(() => '?').join(',');
   return db.prepare(`
@@ -120,10 +121,10 @@ function creativeTests(brandId) {
   `).all(...pageIds);
 }
 
-function creativesGrid(brandId) {
-  const pageIds = pageIdsForBrand(brandId);
+async function creativesGrid(brandId) {
+  const pageIds = await pageIdsForBrand(brandId);
   if (!pageIds.length) return [];
-  const rows = latestSnapshot(pageIds);
+  const rows = await latestSnapshot(pageIds);
   const dupCounts = {};
   for (const r of rows) dupCounts[r.duplicate_group] = (dupCounts[r.duplicate_group] || 0) + 1;
   return rows.map((r) => ({
@@ -133,22 +134,22 @@ function creativesGrid(brandId) {
 }
 
 /** Счётчик для карточки бренда в Ad Library: активные сейчас / всего когда-либо замечено */
-function libraryStats(brandId) {
-  const pageIds = pageIdsForBrand(brandId);
+async function libraryStats(brandId) {
+  const pageIds = await pageIdsForBrand(brandId);
   if (!pageIds.length) return { active: 0, total: 0 };
   const ph = pageIds.map(() => '?').join(',');
 
-  const totalRow = db
+  const totalRow = await db
     .prepare(`SELECT COUNT(DISTINCT ad_id) as n FROM ad_snapshots WHERE ad_page_id IN (${ph})`)
     .get(...pageIds);
 
-  const maxDateRow = db
+  const maxDateRow = await db
     .prepare(`SELECT MAX(fetch_date) as d FROM ad_snapshots WHERE ad_page_id IN (${ph})`)
     .get(...pageIds);
 
   let active = 0;
   if (maxDateRow?.d) {
-    const activeRow = db
+    const activeRow = await db
       .prepare(`
         SELECT COUNT(DISTINCT ad_id) as n FROM ad_snapshots
         WHERE ad_page_id IN (${ph}) AND fetch_date = ? AND is_active = 1
@@ -163,8 +164,8 @@ function libraryStats(brandId) {
 /** Вкладка "Scaling" в Ad Library: топ креативов по ВСЕМ отслеживаемым брендам
  * и аккаунтам сразу — активные сейчас, с большим числом дублей (значит,
  * конкурент масштабирует именно этот креатив) и большим охватом. */
-function scalingCreatives(limit = 30) {
-  const pages = db.prepare(`
+async function scalingCreatives(limit = 30) {
+  const pages = await db.prepare(`
     SELECT p.id, p.brand_id, b.name as brand_name FROM ad_pages p JOIN brands b ON b.id = p.brand_id
   `).all();
   const pagesByBrand = {};
@@ -172,7 +173,7 @@ function scalingCreatives(limit = 30) {
 
   const groups = [];
   for (const { brandName, pageIds } of Object.values(pagesByBrand)) {
-    const rows = latestSnapshot(pageIds).filter((r) => r.is_active);
+    const rows = (await latestSnapshot(pageIds)).filter((r) => r.is_active);
     const byDupGroup = {};
     for (const r of rows) (byDupGroup[r.duplicate_group] ||= []).push(r);
     for (const dupRows of Object.values(byDupGroup)) {
