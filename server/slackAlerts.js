@@ -43,17 +43,19 @@ async function postToSlack(payload) {
   if (!resp.ok) console.error('Slack webhook ответил ошибкой:', resp.status, await resp.text().catch(() => ''));
 }
 
-async function postCreativeAlert(c, headline) {
+async function postCreativeAlert(c) {
   const emoji = GRADE_EMOJI[c.grade] || '⚪';
+  const driveUrl = await googleDrive.findFileLinkByName(c.name);
   const lines = [
-    `Grade: ${emoji} *${c.grade}* · Воронка: ${c.funnel || '—'} · Аккаунты: ${(c.accounts || []).join(', ')}`,
+    `Grade: ${emoji} *${c.grade}*`,
+    `Воронка: ${c.funnel || '—'}`,
+    `Аккаунты: ${(c.accounts || []).join(', ')}`,
     `Spend: $${Math.round(c.spend)} · Purchases: ${c.purchases} · CPA: ${c.cpa ? '$' + c.cpa.toFixed(2) : '—'}`
   ];
-  const driveUrl = await googleDrive.findFileLinkByName(c.name);
   await postToSlack({
     attachments: [{
       color: GRADE_COLORS[c.grade] || '#999999',
-      title: `${headline}: ${c.name}`,
+      title: `🚀 Креатив поднялся по грейду: ${c.name}`,
       ...(driveUrl ? { title_link: driveUrl } : {}),
       text: lines.join('\n'),
       ...(c.previewUrl ? { image_url: c.previewUrl } : {})
@@ -100,9 +102,7 @@ async function checkNewTopCreatives() {
   console.log(`[slack-alert] ${since}: ${topCreatives.length} креативов Promising+, ${upgraded.length} поднялись по грейду`);
 
   for (const c of upgraded) {
-    const prevGrade = lastKnownGrade(c.name);
-    const headline = prevGrade ? `🚀 ${prevGrade} → ${c.grade}` : `🚀 Новый в ${c.grade}`;
-    await postCreativeAlert(c, headline);
+    await postCreativeAlert(c);
     markNotified(c.name, c.grade);
   }
 }
@@ -120,7 +120,7 @@ async function resendTopCreatives(daysAgo = 1) {
 
   console.log(`[slack-alert] resend ${day}: ${topCreatives.length} креативов Promising+`);
   for (const c of topCreatives) {
-    await postCreativeAlert(c, '🚀 Топ-креатив');
+    await postCreativeAlert(c);
   }
 }
 
