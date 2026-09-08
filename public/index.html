@@ -23,7 +23,6 @@
 
     <nav class="side-nav">
       <button class="side-nav__item is-active" data-view="library">Ad Library</button>
-      <button class="side-nav__item" data-view="search">Быстрый поиск</button>
       <button class="side-nav__item" data-view="jobs">Сбор данных</button>
       <button class="side-nav__item" data-view="analytics">Аналитика</button>
     </nav>
@@ -190,44 +189,6 @@
           </select>
         </div>
         <div id="ads-grid" class="grid grid--ads"></div>
-      </div>
-    </section>
-
-    <!-- ===== Быстрый поиск (без сохранения истории) ===== -->
-    <section id="view-search" class="view" hidden>
-      <div class="view__header">
-        <h1>Быстрый поиск</h1>
-        <p class="view__sub">Ищем прямо по официальной Meta Ad Library, без сохранения в базу.</p>
-      </div>
-
-      <form id="search-form" class="analytics-filters">
-        <label class="field">
-          <span class="field__label">Бренд или ключевое слово</span>
-          <input type="text" id="q" name="q" placeholder="например, Nike" autocomplete="off" required />
-        </label>
-        <label class="field">
-          <span class="field__label">Страны показа</span>
-          <input type="text" id="countries" name="countries" placeholder="US, GB, DE" value="US" autocomplete="off" />
-        </label>
-        <fieldset class="field">
-          <legend class="field__label">Статус</legend>
-          <div class="radio-row">
-            <label class="radio"><input type="radio" name="status" value="ACTIVE" checked /> Активные</label>
-            <label class="radio"><input type="radio" name="status" value="INACTIVE" /> Завершённые</label>
-            <label class="radio"><input type="radio" name="status" value="ALL" /> Все</label>
-          </div>
-        </fieldset>
-        <button type="submit" class="btn btn--primary">Искать креативы</button>
-      </form>
-
-      <div id="results-title-row" class="view__header">
-        <h1 id="results-title"></h1>
-        <p id="results-sub" class="view__sub"></p>
-      </div>
-      <div id="results-status" class="status-line"></div>
-      <div id="results-grid" class="grid"></div>
-      <div class="load-more-wrap">
-        <button id="load-more" class="btn btn--ghost" hidden>Показать ещё</button>
       </div>
     </section>
 
@@ -534,25 +495,6 @@
     </div>
   </form>
 </dialog>
-
-<template id="card-template">
-  <article class="card">
-    <header class="card__header">
-      <div class="card__page"></div>
-      <span class="card__status"></span>
-    </header>
-    <div class="card__preview">
-      <img class="card__thumb" hidden />
-      <button class="card__preview-toggle">Показать креатив</button>
-    </div>
-    <p class="card__body"></p>
-    <dl class="card__meta"></dl>
-    <footer class="card__footer">
-      <a class="card__link" target="_blank" rel="noopener">Открыть в Ad Library ↗</a>
-      <button class="card__save btn btn--small">Сохранить</button>
-    </footer>
-  </article>
-</template>
 
 <script src="app.js"></script>
 </body>

@@ -4,9 +4,7 @@ const cors = require('cors');
 const path = require('path');
 const cron = require('node-cron');
 
-const { searchAds } = require('./metaApi');
-const { inspectSnapshot, closeBrowser } = require('./snapshotInspect');
-const storage = require('./storage');
+const { closeBrowser } = require('./snapshotInspect');
 const db = require('./db');
 const { fetchSnapshotForAdPage } = require('./fetchService');
 const analytics = require('./analytics');
@@ -22,41 +20,6 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
-
-app.get('/api/search', async (req, res) => {
-  try {
-    const { q, countries, status = 'ACTIVE', platforms, after, limit } = req.query;
-    const result = await searchAds({
-      searchTerms: q,
-      countries: countries ? countries.split(',').map((c) => c.trim().toUpperCase()) : ['US'],
-      activeStatus: status,
-      platforms: platforms ? platforms.split(',').map((p) => p.trim()) : [],
-      after: after || undefined,
-      limit: limit ? Number(limit) : 25
-    });
-
-    // Подтягиваем превью для каждой карточки (best-effort, параллельно)
-    const enriched = await Promise.all(
-      result.ads.map(async (ad) => {
-        const { thumbnail, format } = await inspectSnapshot(ad.ad_snapshot_url);
-        return { ...ad, thumbnail_url: thumbnail, format };
-      })
-    );
-
-    res.json({ ...result, ads: enriched });
-  } catch (err) {
-    console.error(err);
-    res.status(err.status || 500).json({ error: err.message, details: err.metaError });
-  }
-});
-
-app.get('/api/saved', (req, res) => res.json(storage.getAll()));
-app.post('/api/saved', (req, res) => {
-  const ad = req.body;
-  if (!ad || !ad.id) return res.status(400).json({ error: 'Нужен объект объявления с полем id' });
-  res.json(storage.save(ad));
-});
-app.delete('/api/saved/:id', (req, res) => res.json(storage.remove(req.params.id)));
 
 app.get('/api/scaling', async (req, res) => res.json(await analytics.scalingCreatives()));
 

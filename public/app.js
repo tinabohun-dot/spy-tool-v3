@@ -18,7 +18,6 @@ $all('.side-nav__item').forEach((btn) => {
     btn.classList.add('is-active');
     const view = btn.dataset.view;
     $('#view-library').hidden = view !== 'library';
-    $('#view-search').hidden = view !== 'search';
     $('#view-jobs').hidden = view !== 'jobs';
     $('#view-analytics').hidden = view !== 'analytics';
     $('#view-brand').hidden = true;
@@ -478,52 +477,6 @@ $('#ads-sort').addEventListener('change', (e) => {
   adsSort = e.target.value;
   applyAdsFilters();
 });
-
-// ---------- Быстрый поиск (независимая простая фича) ----------
-$('#search-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const q = $('#q').value.trim();
-  const countries = $('#countries').value.trim();
-  const status = $all('input[name=status]').find((r) => r.checked).value;
-  $('#results-status').textContent = 'Ищу...';
-  $('#results-grid').innerHTML = '';
-  try {
-    const params = new URLSearchParams({ q, countries, status, limit: 25 });
-    const data = await fetch(`/api/search?${params}`).then((r) => r.json());
-    $('#results-title').textContent = `Результаты по «${q}»`;
-    $('#results-status').textContent = `Найдено: ${data.ads.length}`;
-    renderSearchGrid(data.ads);
-  } catch (err) {
-    $('#results-status').textContent = 'Ошибка: ' + err.message;
-  }
-});
-
-function renderSearchGrid(ads) {
-  const grid = $('#results-grid');
-  const tpl = $('#card-template');
-  grid.innerHTML = '';
-  for (const ad of ads) {
-    const node = tpl.content.cloneNode(true);
-    node.querySelector('.card__page').textContent = ad.page_name || '—';
-    const isActive = !ad.ad_delivery_stop_time;
-    const statusEl = node.querySelector('.card__status');
-    statusEl.textContent = isActive ? 'active' : 'inactive';
-    statusEl.classList.add(isActive ? 'card__status--active' : 'card__status--inactive');
-    node.querySelector('.card__body').textContent = (ad.ad_creative_bodies || [])[0] || '(без текста)';
-    node.querySelector('.card__link').href = ad.ad_snapshot_url;
-
-    const img = node.querySelector('.card__thumb');
-    const toggle = node.querySelector('.card__preview-toggle');
-    if (ad.thumbnail_url) {
-      img.src = ad.thumbnail_url;
-      img.hidden = false;
-      toggle.textContent = ad.format === 'video' ? '▶ Видео — открыть' : 'Открыть полностью';
-      img.addEventListener('click', () => window.open(ad.ad_snapshot_url, '_blank'));
-    }
-    toggle.addEventListener('click', () => window.open(ad.ad_snapshot_url, '_blank'));
-    grid.appendChild(node);
-  }
-}
 
 // ---------- Сбор данных: статус по Ad Page ----------
 let jobsPollTimer = null;
