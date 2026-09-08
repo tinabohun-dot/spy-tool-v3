@@ -423,10 +423,19 @@ function applyAdsFilters() {
   const grid = $('#ads-grid');
   grid.innerHTML = '';
   const pagesById = Object.fromEntries(currentPages.map((p) => [p.id, p]));
+
+  // При большом объёме активных креативов (>500) в выбранном аккаунте —
+  // прячем совсем свежие (меньше 3 дней активности), иначе список слишком
+  // шумный от только что запущенных тестов.
+  const scopedByAccount = adsData.filter((ad) => adsPageFilter === 'all' || String(ad.ad_page_id) === String(adsPageFilter));
+  const activeCountInScope = scopedByAccount.filter((ad) => ad.is_active).length;
+  const trimFreshActive = activeCountInScope > 500;
+
   const filtered = adsData.filter((ad) => {
     if (adsStatusFilter === 'active' && !ad.is_active) return false;
     if (adsStatusFilter === 'inactive' && ad.is_active) return false;
     if (adsPageFilter !== 'all' && String(ad.ad_page_id) !== String(adsPageFilter)) return false;
+    if (trimFreshActive && ad.is_active && (ad.activityDays ?? 0) < 3) return false;
     return true;
   });
   const getSortValue = ADS_SORTERS[adsSort] || ADS_SORTERS.lastSeen;
