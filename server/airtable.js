@@ -187,30 +187,54 @@ async function cpReport(since, until) {
   };
 }
 
-// Вкладка "UA": сколько задач UA запустили (перевели в "Sent UA") по дням,
-// видео/статика, разбивка по CP. Отдельная метрика по своей дате — не
-// показывает время ожидания между статусами, только объём запусков.
+// Вкладка "UA": сколько задач UA запустили (перевели в "Sent UA") по дням, с
+// разбивкой по ВОРОНКЕ (не по CP — сколько запустил конкретный человек тут
+// не важно), видео/статика с разбивкой по номерам задач, и утилизация
+// очереди "Ready to Test" (сколько ждёт запуска и какая доля реально ушла).
 async function uaReport(since, until) {
   const { tasks } = await loadTasks();
   const inWindow = tasks.filter((t) => inRange(t.whenSentUA, since, until));
 
   const byDay = {};
-  const byCp = {};
-  const byCpTasks = {};
+  const byFunnel = {};
+  const byDayFunnel = {};
+  const byDayFunnelTasks = {};
+  const byFunnelTasksByDay = {};
+  const formatTasks = { Video: [], Static: [] };
   let video = 0; let staticCount = 0;
 
   for (const t of inWindow) {
     const day = t.whenSentUA.slice(0, 10);
+    const funnel = t.funnel || '—';
     byDay[day] = (byDay[day] || 0) + 1;
-    if (t.creoType === 'Video') video++; else if (t.creoType === 'Static') staticCount++;
-    const cp = t.cp || '—';
-    byCp[cp] = (byCp[cp] || 0) + 1;
-    pushTask(byCpTasks, cp, t);
+
+    if (t.creoType === 'Video') { video++; formatTasks.Video.push({ taskId: t.taskId, taskName: t.taskName }); }
+    else if (t.creoType === 'Static') { staticCount++; formatTasks.Static.push({ taskId: t.taskId, taskName: t.taskName }); }
+
+    byFunnel[funnel] = (byFunnel[funnel] || 0) + 1;
+
+    (byDayFunnel[day] ||= {});
+    byDayFunnel[day][funnel] = (byDayFunnel[day][funnel] || 0) + 1;
+    (byDayFunnelTasks[day] ||= {});
+    pushTask(byDayFunnelTasks[day], funnel, t);
+    (byFunnelTasksByDay[funnel] ||= {});
+    pushTask(byFunnelTasksByDay[funnel], day, t);
   }
 
   const prevPeriod = previousEquivalentPeriod(since, until);
   const prevTotal = tasks.filter((t) => inRange(t.whenSentUA, prevPeriod.since, prevPeriod.until)).length;
   const pctChange = prevTotal ? Math.round(((inWindow.length - prevTotal) / prevTotal) * 100) : null;
+
+  // Airtable не хранит дату входа в статус "Ready Test", поэтому запас —
+  // это то, что СЕЙЧАС стоит в этом статусе (снимок на текущий момент, не
+  // привязан к периоду). "Передано в To Test за период" и "Запущено за
+  // период" — обычные метрики по датам. Утилизация — какая доля из пула
+  // (текущий запас + то, что уже запущено из него за период) реально ушла.
+  const readyTestBacklogNow = tasks.filter((t) => t.status === 'Ready Test').length;
+  const newToTestInPeriod = tasks.filter((t) => inRange(t.whenToTest, since, until)).length;
+  const launchedInPeriod = inWindow.length;
+  const availablePool = readyTestBacklogNow + launchedInPeriod;
+  const utilizationPct = availablePool > 0 ? Math.round((launchedInPeriod / availablePool) * 100) : null;
 
   return {
     total: inWindow.length,
@@ -219,8 +243,17 @@ async function uaReport(since, until) {
     video,
     static: staticCount,
     byDay: Object.entries(byDay).map(([day, count]) => ({ day, count })).sort((a, b) => a.day.localeCompare(b.day)),
-    byCp: Object.fromEntries(Object.entries(byCp).sort((a, b) => b[1] - a[1])),
-    byCpTasks
+    byDayFunnel,
+    byDayFunnelTasks,
+    byFunnel: Object.fromEntries(Object.entries(byFunnel).sort((a, b) => b[1] - a[1])),
+    byFunnelTasksByDay,
+    formatTasks,
+    readyTest: {
+      backlogNow: readyTestBacklogNow,
+      newToTestInPeriod,
+      launchedInPeriod,
+      utilizationPct
+    }
   };
 }
 

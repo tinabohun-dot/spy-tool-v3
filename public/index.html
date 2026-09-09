@@ -448,18 +448,31 @@
         <div class="panel-grid">
           <div class="panel-card">
             <h3>UA по дням</h3>
-            <p class="hint">Сколько задач UA запустили ("Sent UA") за выбранный период</p>
+            <p class="hint">Сколько задач UA запустили ("Sent UA") за выбранный период, с разбивкой по воронкам (наведи на столбец)</p>
             <p id="ua-number" class="big-number">—</p>
             <canvas id="chart-ua-by-day"></canvas>
           </div>
           <div class="panel-card">
             <h3>Формат</h3>
+            <p class="hint">Клик по формату — список задач</p>
             <div id="ua-format-bar" class="stacked-bar"></div>
-            <div id="ua-format-legend" class="stacked-bar__legend"></div>
+            <div id="ua-format-legend" class="stacked-bar__legend stacked-bar__legend--clickable"></div>
+            <ul id="ua-format-tasks" class="bar-row__tasks" hidden></ul>
           </div>
           <div class="panel-card">
-            <h3>По CP</h3>
+            <h3>По воронке</h3>
+            <p class="hint">Клик — список задач по дням</p>
             <div id="ua-bars" class="bar-list"></div>
+          </div>
+          <div class="panel-card">
+            <h3>Утилизация Ready to Test</h3>
+            <p class="hint">Сколько задач ждало запуска и какая доля реально запущена</p>
+            <dl class="util-stats">
+              <div><dt>Передано в To Test за период</dt><dd id="ua-util-new">—</dd></div>
+              <div><dt>Осталось в запасе (Ready to Test сейчас)</dt><dd id="ua-util-backlog">—</dd></div>
+              <div><dt>Запущено (Sent UA) за период</dt><dd id="ua-util-launched">—</dd></div>
+              <div><dt>Утилизация</dt><dd id="ua-util-pct">—</dd></div>
+            </dl>
           </div>
         </div>
         <p class="hint">Данные по "Sent UA" копятся только с недавнего времени — старые периоды будут занижены.</p>

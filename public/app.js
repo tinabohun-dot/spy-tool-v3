@@ -340,6 +340,57 @@ document.addEventListener('click', (e) => {
   if (list && list.classList.contains('bar-row__tasks')) list.hidden = !list.hidden;
 });
 
+// Как renderBarListWithTasks, но список задач при разворачивании
+// сгруппирован по дням (для "По воронке" в UA — период может быть
+// многодневным, и важно видеть, сколько и какие номера ушли именно в
+// какой день, а не единым списком).
+function renderFunnelBarWithDayGroups(sel, byFunnel, tasksByDayPerFunnel) {
+  const entries = Object.entries(byFunnel).sort((a, b) => b[1] - a[1]);
+  const max = Math.max(1, ...entries.map((e) => e[1]));
+  $(sel).innerHTML = entries.map(([funnel, val], i) => {
+    const byDay = tasksByDayPerFunnel?.[funnel] || {};
+    const days = Object.keys(byDay).sort();
+    const groups = days.map((day) => {
+      const tasks = byDay[day];
+      const items = tasks.map((t) => `<li>${t.taskId != null ? `#${t.taskId}` : ''} ${t.taskName || ''}</li>`).join('');
+      return `<li class="bar-row__day-group"><strong>${day} — ${tasks.length} шт.</strong><ul>${items}</ul></li>`;
+    }).join('');
+    return `
+      <div class="bar-row bar-row--expandable" data-key="${funnel}">
+        <span class="bar-row__label">${funnel}</span>
+        <span class="bar-row__track"><span class="bar-row__fill" style="width:${(val / max) * 100}%;background:${CATEGORY_COLORS[i % CATEGORY_COLORS.length]}"></span></span>
+        <span class="bar-row__value">${val}</span>
+      </div>
+      <ul class="bar-row__tasks" hidden>${groups}</ul>`;
+  }).join('') || '<p class="hint">Пока нет данных</p>';
+}
+
+// Формат (Video/Static) с кликабельной легендой — показывает список
+// конкретных задач того формата в отдельном списке под ней.
+function renderFormatWithTasks(barSel, legendSel, tasksSel, formatTasks) {
+  const video = formatTasks.Video || [];
+  const staticTasks = formatTasks.Static || [];
+  renderGenericStackedBar(barSel, legendSel, [
+    { label: 'Video', value: video.length, color: '#2ea56f' },
+    { label: 'Static', value: staticTasks.length, color: '#d95f2b' }
+  ]);
+  const byLabel = { Video: video, Static: staticTasks };
+  const taskListEl = $(tasksSel);
+  taskListEl.hidden = true;
+  $all('span', $(legendSel)).forEach((span) => {
+    const label = span.textContent.trim().split(' ')[0];
+    const tasks = byLabel[label];
+    if (!tasks) return;
+    span.addEventListener('click', () => {
+      const alreadyShowingThis = !taskListEl.hidden && taskListEl.dataset.label === label;
+      if (alreadyShowingThis) { taskListEl.hidden = true; return; }
+      taskListEl.dataset.label = label;
+      taskListEl.innerHTML = tasks.map((t) => `<li>${t.taskId != null ? `#${t.taskId}` : ''} ${t.taskName || ''}</li>`).join('') || '<li>Нет задач</li>';
+      taskListEl.hidden = false;
+    });
+  });
+}
+
 const DOMAIN_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i;
 
 function renderBarList(sel, obj, sortByValue = true, opts = {}) {
@@ -1008,12 +1059,43 @@ async function loadCp(since, until) {
   }
 }
 
+function renderUaReport(data) {
+  renderPctBigNumber('#ua-number', data.total, data.pctChange);
+
+  const days = data.byDay.map((d) => d.day);
+  const funnels = [...new Set(days.flatMap((day) => Object.keys(data.byDayFunnel[day] || {})))];
+  const datasets = funnels.map((funnel, i) => ({
+    label: funnel,
+    data: days.map((day) => data.byDayFunnel[day]?.[funnel] || 0),
+    backgroundColor: CATEGORY_COLORS[i % CATEGORY_COLORS.length]
+  }));
+
+  destroyChart('uaByDay');
+  charts.uaByDay = new Chart($('#chart-ua-by-day'), {
+    type: 'bar',
+    data: { labels: days, datasets },
+    options: {
+      plugins: { legend: { display: funnels.length > 1 } },
+      scales: { x: { stacked: true }, y: { stacked: true } }
+    }
+  });
+
+  renderFormatWithTasks('#ua-format-bar', '#ua-format-legend', '#ua-format-tasks', data.formatTasks);
+  renderFunnelBarWithDayGroups('#ua-bars', data.byFunnel, data.byFunnelTasksByDay);
+
+  const rt = data.readyTest;
+  $('#ua-util-new').textContent = rt.newToTestInPeriod;
+  $('#ua-util-backlog').textContent = rt.backlogNow;
+  $('#ua-util-launched').textContent = rt.launchedInPeriod;
+  $('#ua-util-pct').textContent = rt.utilizationPct != null ? rt.utilizationPct + '%' : '—';
+}
+
 async function loadUa(since, until) {
   $('#analytics-status').textContent = 'Загружаю...';
   try {
     const data = await fetchJson(`/api/analytics/ua?${new URLSearchParams({ since, until })}`);
     $('#analytics-status').textContent = '';
-    renderDailyReport('ua', data);
+    renderUaReport(data);
   } catch (err) {
     $('#analytics-status').textContent = 'Ошибка: ' + err.message;
   }
