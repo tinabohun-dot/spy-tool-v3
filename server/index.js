@@ -34,15 +34,21 @@ let topCreoCheckRunning = false;
 
 async function maybeRunMorningTopCreoCheck() {
   if (topCreoCheckRunning) return;
-  const warsawHour = +new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Warsaw', hour: 'numeric', hourCycle: 'h23' }).format(new Date());
-  if (warsawHour < TOP_CREO_CHECK_HOUR) return;
-
-  const today = warsawDateString(0);
-  const row = await db.prepare("SELECT value FROM app_meta WHERE key = 'last_top_creo_check_date'").get();
-  if (row?.value === today) return;
-
-  topCreoCheckRunning = true;
+  // Всё тело — в одном try/catch: необработанный reject в async-функции,
+  // вызванной без await/.catch() (как ниже, в middleware), убивает весь
+  // процесс Node (поведение по умолчанию с Node 15+) — а не просто эту
+  // проверку. Один сетевой сбой при обращении к Turso на холодном старте
+  // контейнера уронил бы сервер прямо на первом запросе (health-check
+  // Render) и выглядел бы как зависший на ровном месте деплой.
   try {
+    const warsawHour = +new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Warsaw', hour: 'numeric', hourCycle: 'h23' }).format(new Date());
+    if (warsawHour < TOP_CREO_CHECK_HOUR) return;
+
+    const today = warsawDateString(0);
+    const row = await db.prepare("SELECT value FROM app_meta WHERE key = 'last_top_creo_check_date'").get();
+    if (row?.value === today) return;
+
+    topCreoCheckRunning = true;
     await db.prepare(`
       INSERT INTO app_meta (key, value) VALUES ('last_top_creo_check_date', ?)
       ON CONFLICT(key) DO UPDATE SET value = excluded.value
@@ -58,7 +64,7 @@ async function maybeRunMorningTopCreoCheck() {
 
 app.use((req, res, next) => {
   next();
-  maybeRunMorningTopCreoCheck();
+  maybeRunMorningTopCreoCheck().catch((e) => console.error('[top-creo] Необработанная ошибка:', e.message));
 });
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
