@@ -166,12 +166,12 @@ async function checkNewTopCreatives() {
     return;
   }
 
-  for (const c of upgraded) {
-    await postCreativeAlert(c, 'up');
-    await markNotified(c.name, c.grade);
-  }
   for (const c of downgraded) {
     await postCreativeAlert(c, 'down');
+    await markNotified(c.name, c.grade);
+  }
+  for (const c of upgraded) {
+    await postCreativeAlert(c, 'up');
     await markNotified(c.name, c.grade);
   }
 }
