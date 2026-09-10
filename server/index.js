@@ -19,7 +19,6 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '..', 'public')));
 
 // Бесплатный Render засыпает без входящих запросов, поэтому cron.schedule на
 // фиксированное время мог просто не наступить, пока процесс спал — и
@@ -27,7 +26,9 @@ app.use(express.static(path.join(__dirname, '..', 'public')));
 // расписания — триггерим проверку первым же запросом после 10:00 по Варшаве,
 // не чаще раза в день. Дата последнего запуска лежит в app_meta, чтобы
 // пережить рестарт/сон, а topCreoCheckRunning защищает от дублей, пока
-// сама проверка (обращения к Meta API) ещё выполняется.
+// сама проверка (обращения к Meta API) ещё выполняется. Важно: эта middleware
+// стоит ДО express.static — иначе для отданных статикой запросов (например,
+// самой главной страницы) next() не вызывался бы и проверка не запускалась.
 const TOP_CREO_CHECK_HOUR = 10; // по Варшаве — как раньше было в cron.schedule
 let topCreoCheckRunning = false;
 
@@ -59,6 +60,8 @@ app.use((req, res, next) => {
   next();
   maybeRunMorningTopCreoCheck();
 });
+
+app.use(express.static(path.join(__dirname, '..', 'public')));
 
 app.get('/api/scaling', async (req, res) => res.json(await analytics.scalingCreatives()));
 
