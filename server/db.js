@@ -101,6 +101,11 @@ async function migrate() {
       grade TEXT NOT NULL,
       notified_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
 
   // Разбивка eu_total_reach по стране/возрасту/полу и подпись ссылки —

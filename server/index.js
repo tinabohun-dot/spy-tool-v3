@@ -11,7 +11,7 @@ const analytics = require('./analytics');
 const jobStatus = require('./jobStatus');
 const metaMarketing = require('./metaMarketing');
 const airtable = require('./airtable');
-const { checkNewTopCreatives } = require('./slackAlerts');
+const { checkNewTopCreatives, warsawDateString } = require('./slackAlerts');
 const googleDrive = require('./googleDrive');
 
 const app = express();
@@ -20,6 +20,45 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '..', 'public')));
+
+// Бесплатный Render засыпает без входящих запросов, поэтому cron.schedule на
+// фиксированное время мог просто не наступить, пока процесс спал — и
+// уведомление в Slack не уходило вовсе (see: тишина в #top_creo). Вместо
+// расписания — триггерим проверку первым же запросом после 10:00 по Варшаве,
+// не чаще раза в день. Дата последнего запуска лежит в app_meta, чтобы
+// пережить рестарт/сон, а topCreoCheckRunning защищает от дублей, пока
+// сама проверка (обращения к Meta API) ещё выполняется.
+const TOP_CREO_CHECK_HOUR = 10; // по Варшаве — как раньше было в cron.schedule
+let topCreoCheckRunning = false;
+
+async function maybeRunMorningTopCreoCheck() {
+  if (topCreoCheckRunning) return;
+  const warsawHour = +new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Warsaw', hour: 'numeric', hourCycle: 'h23' }).format(new Date());
+  if (warsawHour < TOP_CREO_CHECK_HOUR) return;
+
+  const today = warsawDateString(0);
+  const row = await db.prepare("SELECT value FROM app_meta WHERE key = 'last_top_creo_check_date'").get();
+  if (row?.value === today) return;
+
+  topCreoCheckRunning = true;
+  try {
+    await db.prepare(`
+      INSERT INTO app_meta (key, value) VALUES ('last_top_creo_check_date', ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value
+    `).run(today);
+    console.log('[top-creo] Утренняя проверка запущена первым визитом:', today);
+    await checkNewTopCreatives();
+  } catch (e) {
+    console.error('[top-creo] Ошибка утренней проверки:', e.message);
+  } finally {
+    topCreoCheckRunning = false;
+  }
+}
+
+app.use((req, res, next) => {
+  next();
+  maybeRunMorningTopCreoCheck();
+});
 
 app.get('/api/scaling', async (req, res) => res.json(await analytics.scalingCreatives()));
 
@@ -258,13 +297,6 @@ cron.schedule(schedule, async () => {
   }
   console.log('[cron] Готово');
 });
-
-// Каждое утро в 10:00 по Варшаве — проверяем свои креативы (Аналитика) за
-// прошедшие сутки и шлём в Slack те, что поднялись до Promising+ или выше.
-cron.schedule('0 10 * * *', async () => {
-  console.log('[cron] Проверка новых топ-креативов для Slack:', new Date().toISOString());
-  try { await checkNewTopCreatives(); } catch (e) { console.error('[cron] Ошибка проверки топ-креативов:', e.message); }
-}, { timezone: 'Europe/Warsaw' });
 
 // Разовая авторизация для поиска видео в Google Drive по имени креатива
 // (используется в Slack-уведомлениях) — открой /oauth2/start в браузере,
