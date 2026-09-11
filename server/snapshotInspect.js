@@ -33,8 +33,12 @@ async function getBrowser() {
 }
 
 // Ограничиваем число одновременно открытых вкладок, иначе при параллельном
-// разборе десятков объявлений на сервере улетит память/CPU.
-const MAX_CONCURRENT = 8;
+// разборе десятков объявлений на сервере улетит память/CPU. На бесплатном
+// Render (один слабый общий CPU) 8 одновременных вкладок, рендерящих тяжёлые
+// страницы Facebook, оставляли JS-плееру видео слишком мало процессорного
+// времени, чтобы успеть вставить <video> в DOM за отведённое окно — отсюда
+// массовые "unknown" именно в проде, при том что локально всё работало.
+const MAX_CONCURRENT = 3;
 let active = 0;
 const queue = [];
 function withSlot(fn) {
@@ -57,16 +61,30 @@ async function attemptInspect(snapshotUrl) {
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     await page.goto(snapshotUrl, { waitUntil: 'networkidle2', timeout: 20000 });
 
-    return await page.evaluate(() => {
-      const video = document.querySelector('video');
-      if (video) {
-        const src = video.currentSrc || video.src || video.querySelector('source')?.src || null;
-        return { format: 'video', thumbnail: video.poster || src };
+    // networkidle2 значит только "сеть затихла" — сам JS-плеер Facebook ещё
+    // может дорисовывать <video> (с poster) в DOM пару секунд после этого,
+    // особенно под нагрузкой на слабом CPU. Поэтому не проверяем DOM один
+    // раз, а опрашиваем его до 8 секунд, пока не появится video или
+    // достаточно крупная img — так мы не фиксируем "unknown" преждевременно.
+    return await page.evaluate(async () => {
+      function extract() {
+        const video = document.querySelector('video');
+        if (video) {
+          const src = video.currentSrc || video.src || video.querySelector('source')?.src || null;
+          if (video.poster || src) return { format: 'video', thumbnail: video.poster || src };
+        }
+        const imgs = Array.from(document.querySelectorAll('img'))
+          .filter((img) => img.naturalWidth > 100 && img.naturalHeight > 100)
+          .sort((a, b) => (b.naturalWidth * b.naturalHeight) - (a.naturalWidth * a.naturalHeight));
+        if (imgs[0]) return { format: 'image', thumbnail: imgs[0].src };
+        return null;
       }
-      const imgs = Array.from(document.querySelectorAll('img'))
-        .filter((img) => img.naturalWidth > 100 && img.naturalHeight > 100)
-        .sort((a, b) => (b.naturalWidth * b.naturalHeight) - (a.naturalWidth * a.naturalHeight));
-      if (imgs[0]) return { format: 'image', thumbnail: imgs[0].src };
+      const deadline = Date.now() + 8000;
+      while (Date.now() < deadline) {
+        const result = extract();
+        if (result) return result;
+        await new Promise((r) => setTimeout(r, 300));
+      }
       return { format: 'unknown', thumbnail: null };
     });
   } finally {
@@ -81,12 +99,16 @@ async function attemptInspect(snapshotUrl) {
 async function inspectSnapshot(snapshotUrl) {
   if (!snapshotUrl) return { format: 'unknown', thumbnail: null };
   return withSlot(async () => {
+    let lastError = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const result = await attemptInspect(snapshotUrl);
         if (result.thumbnail || attempt === 1) return result;
-      } catch { /* пробуем ещё раз новой вкладкой */ }
+      } catch (e) { lastError = e; /* пробуем ещё раз новой вкладкой */ }
     }
+    // Раньше здесь молча возвращали unknown — с сервера было невозможно
+    // понять, сбоит ли скрапер вообще или просто у объявления нет медиа.
+    console.warn('[snapshot-inspect] Не удалось найти превью:', snapshotUrl, lastError ? `(${lastError.message})` : '(video/img не появились за отведённое время)');
     return { format: 'unknown', thumbnail: null };
   });
 }
