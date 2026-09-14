@@ -7,7 +7,15 @@ const puppeteer = require('puppeteer');
 let browserPromise = null;
 let relaunchPromise = null;
 function launchBrowser() {
-  return puppeteer.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+  return puppeteer.launch({
+    headless: true,
+    // --disable-dev-shm-usage: в Docker /dev/shm по умолчанию урезан до
+    // 64 МБ — рендер-процессу Chrome этого не хватает на тяжёлых страницах,
+    // и он падает посреди работы (видно как "Navigating frame was detached").
+    // Без этого флага Chrome пишет туда, с ним — на обычный диск во
+    // временную папку, что чуть медленнее, зато не падает.
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
+  });
 }
 async function getBrowser() {
   if (!browserPromise) browserPromise = launchBrowser();
@@ -34,11 +42,12 @@ async function getBrowser() {
 
 // Ограничиваем число одновременно открытых вкладок, иначе при параллельном
 // разборе десятков объявлений на сервере улетит память/CPU. На бесплатном
-// Render (один слабый общий CPU) 8 одновременных вкладок, рендерящих тяжёлые
-// страницы Facebook, оставляли JS-плееру видео слишком мало процессорного
-// времени, чтобы успеть вставить <video> в DOM за отведённое окно — отсюда
-// массовые "unknown" именно в проде, при том что локально всё работало.
-const MAX_CONCURRENT = 3;
+// Render (один слабый общий CPU, ~512 МБ RAM) даже 3 одновременные вкладки с
+// тяжёлыми страницами Facebook приводили к "Navigation timeout" и падениям
+// вкладок ("Navigating frame was detached") — временно снижаем до 1, чтобы
+// сначала добиться стабильности, а не скорости. Можно будет аккуратно
+// повышать обратно, когда станет ясно, что именно упирается в лимит.
+const MAX_CONCURRENT = 1;
 let active = 0;
 const queue = [];
 function withSlot(fn) {
@@ -71,7 +80,7 @@ async function attemptInspect(snapshotUrl) {
     // только дождаться самого медиа, чем и так занимается опрос ниже.
     // domcontentloaded наступает намного раньше и этого достаточно, чтобы
     // JS-плеер начал инициализацию.
-    await page.goto(snapshotUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
+    await page.goto(snapshotUrl, { waitUntil: 'domcontentloaded', timeout: 45000 });
 
     // networkidle2 значит только "сеть затихла" — сам JS-плеер Facebook ещё
     // может дорисовывать <video> (с poster) в DOM пару секунд после этого,

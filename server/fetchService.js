@@ -70,9 +70,10 @@ async function runFetch(adPage, days = 7) {
 
   // inspectSnapshot рендерит каждое объявление headless-браузером — на страницах
   // с сотнями/тысячами объявлений последовательный await убил бы весь сбор на
-  // часы. Обрабатываем параллельно (внутри snapshotInspect своя очередь на 3
-  // одновременных вкладки) и пишем в БД сразу по готовности каждого объявления,
-  // чтобы при прерывании процесса уже отрендеренные креативы не терялись.
+  // часы. Обрабатываем параллельно (внутри snapshotInspect своя очередь —
+  // текущий лимит см. MAX_CONCURRENT там же) и пишем в БД сразу по готовности
+  // каждого объявления, чтобы при прерывании процесса уже отрендеренные
+  // креативы не терялись.
   const rows = await Promise.all(ads.map(async (ad) => {
     const body = (ad.ad_creative_bodies || [])[0] || ad.ad_creative_link_titles?.[0] || '';
     const { format, thumbnail } = priorGoodByAdId[ad.id] || await inspectSnapshot(ad.ad_snapshot_url);
