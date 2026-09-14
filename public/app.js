@@ -3,7 +3,6 @@ let currentBrandId = null;
 let currentPages = [];
 let charts = {};
 let adsData = [];
-let adsStatusFilter = 'all';
 let adsPageFilter = 'all';
 let adsSort = 'lastSeen';
 let metricsPeriodDays = 7;
@@ -157,7 +156,6 @@ $('#add-brand-form').addEventListener('submit', async (e) => {
 async function openBrand(brand) {
   currentBrandId = brand.id;
   currentPages = brand.pages;
-  adsStatusFilter = 'all';
   adsPageFilter = 'all';
   adsSort = 'lastSeen';
   metricsPeriodDays = 7;
@@ -180,7 +178,6 @@ function populateAdsPageFilter() {
     `<option value="${p.id}">${p.page_name || p.page_id}</option>`
   ).join('');
   select.value = 'all';
-  $all('#ads-status-filter .segmented__btn').forEach((b) => b.classList.toggle('is-active', b.dataset.status === 'all'));
 }
 
 function renderPages(pages) {
@@ -222,7 +219,6 @@ $('#add-page-form').addEventListener('submit', async (e) => {
   const updated = brands.find((b) => b.id === currentBrandId);
   currentPages = updated.pages;
   adsPageFilter = 'all';
-  adsStatusFilter = 'all';
   $('#brand-stats-overview').textContent = updated.stats
     ? `Всего по всем аккаунтам: ${updated.stats.active} активных из ${updated.stats.total} креативов`
     : '';
@@ -475,18 +471,15 @@ function applyAdsFilters() {
   grid.innerHTML = '';
   const pagesById = Object.fromEntries(currentPages.map((p) => [p.id, p]));
 
-  // При большом объёме активных креативов (>500) в выбранном аккаунте —
-  // прячем совсем свежие (меньше 3 дней активности), иначе список слишком
-  // шумный от только что запущенных тестов.
-  const scopedByAccount = adsData.filter((ad) => adsPageFilter === 'all' || String(ad.ad_page_id) === String(adsPageFilter));
-  const activeCountInScope = scopedByAccount.filter((ad) => ad.is_active).length;
-  const trimFreshActive = activeCountInScope > 500;
-
+  // "Все креативы" показывает только то, что реально сейчас в эфире и уже
+  // прошло минимальную обкатку — неактивные и совсем свежие (меньше 3 дней)
+  // запуски только шумят списком тестов. Полную картину по всем запускам
+  // (включая неактивные) даёт вкладка Creative tests — её эти фильтры не
+  // затрагивают, у неё свой источник данных.
   const filtered = adsData.filter((ad) => {
-    if (adsStatusFilter === 'active' && !ad.is_active) return false;
-    if (adsStatusFilter === 'inactive' && ad.is_active) return false;
+    if (!ad.is_active) return false;
+    if ((ad.activityDays ?? 0) < 3) return false;
     if (adsPageFilter !== 'all' && String(ad.ad_page_id) !== String(adsPageFilter)) return false;
-    if (trimFreshActive && ad.is_active && (ad.activityDays ?? 0) < 3) return false;
     return true;
   });
   const getSortValue = ADS_SORTERS[adsSort] || ADS_SORTERS.lastSeen;
@@ -518,14 +511,6 @@ function applyAdsFilters() {
     grid.appendChild(card);
   }
 }
-
-$('#ads-status-filter').addEventListener('click', (e) => {
-  const btn = e.target.closest('.segmented__btn');
-  if (!btn) return;
-  adsStatusFilter = btn.dataset.status;
-  $all('#ads-status-filter .segmented__btn').forEach((b) => b.classList.toggle('is-active', b === btn));
-  applyAdsFilters();
-});
 
 $('#ads-page-filter').addEventListener('change', (e) => {
   adsPageFilter = e.target.value;
