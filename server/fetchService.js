@@ -37,6 +37,23 @@ async function runFetch(adPage, days = 7) {
   jobStatus.setTotal(adPage.id, ads.length);
   const date = todayStr();
 
+  // Рендер превью headless-браузером — самый медленный шаг (секунды на
+  // объявление), а нужен он только один раз на объявление: сами картинка/видео
+  // не меняются день ото дня, меняются только метрики (reach, активность).
+  // Поэтому при каждом сборе не рендерим заново то, для чего уже есть удачное
+  // превью из прошлого раза — берём последнее валидное (не 'unknown') по
+  // каждому ad_id и переиспользуем, экономя часы на страницах с сотнями
+  // объявлений.
+  const priorGoodRows = await db.prepare(`
+    SELECT ad_id, thumbnail_url, format FROM ad_snapshots
+    WHERE ad_page_id = ? AND thumbnail_url IS NOT NULL AND format != 'unknown'
+    ORDER BY fetch_date DESC
+  `).all(adPage.id);
+  const priorGoodByAdId = {};
+  for (const r of priorGoodRows) {
+    if (!priorGoodByAdId[r.ad_id]) priorGoodByAdId[r.ad_id] = { format: r.format, thumbnail: r.thumbnail_url };
+  }
+
   const insertSnapshot = db.prepare(`
     INSERT INTO ad_snapshots (
       ad_page_id, ad_id, creative_body, creative_title, snapshot_url, thumbnail_url,
@@ -58,7 +75,7 @@ async function runFetch(adPage, days = 7) {
   // чтобы при прерывании процесса уже отрендеренные креативы не терялись.
   const rows = await Promise.all(ads.map(async (ad) => {
     const body = (ad.ad_creative_bodies || [])[0] || ad.ad_creative_link_titles?.[0] || '';
-    const { format, thumbnail } = await inspectSnapshot(ad.ad_snapshot_url);
+    const { format, thumbnail } = priorGoodByAdId[ad.id] || await inspectSnapshot(ad.ad_snapshot_url);
     const isActive = !ad.ad_delivery_stop_time || new Date(ad.ad_delivery_stop_time) > new Date();
     const row = {
       ad_page_id: adPage.id, ad_id: ad.id, creative_body: body,
