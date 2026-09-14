@@ -59,7 +59,19 @@ async function attemptInspect(snapshotUrl) {
     const browser = await getBrowser();
     page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    await page.goto(snapshotUrl, { waitUntil: 'networkidle2', timeout: 20000 });
+    // Шрифты не нужны для извлечения превью, а Facebook тянет их пачками —
+    // блокируем, чтобы не жечь и так дефицитный CPU/сеть на слабом хостинге.
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      if (req.resourceType() === 'font') req.abort();
+      else req.continue();
+    });
+    // networkidle2 ждал бы, пока затихнут вообще все фоновые запросы
+    // (трекеры/пиксели у Facebook не прекращаются подолгу) — а нам нужно
+    // только дождаться самого медиа, чем и так занимается опрос ниже.
+    // domcontentloaded наступает намного раньше и этого достаточно, чтобы
+    // JS-плеер начал инициализацию.
+    await page.goto(snapshotUrl, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
     // networkidle2 значит только "сеть затихла" — сам JS-плеер Facebook ещё
     // может дорисовывать <video> (с poster) в DOM пару секунд после этого,
