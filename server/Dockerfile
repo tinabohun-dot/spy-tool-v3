@@ -21,8 +21,11 @@ RUN npm install --omit=dev
 # npm-постинсталл Puppeteer иногда не докачивает Chrome при сборке образа
 # (и это молча остаётся закешированным Docker-слоем на все последующие
 # деплои) — ставим Chrome явным отдельным шагом, как советует сама ошибка
-# "Could not find Chrome" ("npx puppeteer browsers install chrome").
-RUN npx puppeteer browsers install chrome
+# "Could not find Chrome" ("npx puppeteer browsers install chrome"). Сначала
+# чистим кеш — постинсталл npm install уже оставил там наполовину
+# распакованную (битую) папку с тем же номером версии, из-за которой install
+# считает, что Chrome уже стоит, и отказывается ставить заново.
+RUN npx puppeteer browsers clear && npx puppeteer browsers install chrome
 
 COPY server/. .
 COPY public /app/public
