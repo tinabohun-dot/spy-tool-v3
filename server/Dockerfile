@@ -18,6 +18,12 @@ WORKDIR /app/server
 COPY server/package*.json ./
 RUN npm install --omit=dev
 
+# npm-постинсталл Puppeteer иногда не докачивает Chrome при сборке образа
+# (и это молча остаётся закешированным Docker-слоем на все последующие
+# деплои) — ставим Chrome явным отдельным шагом, как советует сама ошибка
+# "Could not find Chrome" ("npx puppeteer browsers install chrome").
+RUN npx puppeteer browsers install chrome
+
 COPY server/. .
 COPY public /app/public
 
