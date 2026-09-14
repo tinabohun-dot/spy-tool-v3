@@ -107,4 +107,4 @@ async function runFetch(adPage, days = 7) {
   return { count: rows.length, date };
 }
 
-module.exports = { fetchSnapshotForAdPage, todayStr };
+module.exports = { fetchSnapshotForAdPage, todayStr, hashText };

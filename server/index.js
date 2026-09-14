@@ -6,7 +6,7 @@ const cron = require('node-cron');
 
 const { closeBrowser } = require('./snapshotInspect');
 const db = require('./db');
-const { fetchSnapshotForAdPage } = require('./fetchService');
+const { fetchSnapshotForAdPage, todayStr, hashText } = require('./fetchService');
 const analytics = require('./analytics');
 const jobStatus = require('./jobStatus');
 const metaMarketing = require('./metaMarketing');
@@ -303,6 +303,52 @@ app.post('/api/pages/:pageId/refresh', async (req, res) => {
   const days = +req.query.days || 7;
   fetchSnapshotForAdPage(page, days).catch((e) => console.error(`Сбор не удался для page_id=${page.page_id}:`, e.message));
   res.json({ ok: true });
+});
+
+// Разовый ручной импорт объявлений в обход обычного сбора — на случай, когда
+// официальный Meta Ad Library API не отдаёт активные объявления по странице
+// (бывает у отдельных крупных рекламодателей — отставание индексации на
+// стороне Meta), а сам сайт facebook.com/ads/library их видит. Данные сюда
+// приходят вручную (например, вытащены из открытой страницы), поэтому не
+// обновляются сами по себе — это не замена обычному автоматическому сбору.
+app.post('/api/pages/:pageId/manual-import', async (req, res) => {
+  const page = await db.prepare('SELECT * FROM ad_pages WHERE id = ?').get(req.params.pageId);
+  if (!page) return res.status(404).json({ error: 'Ad Page не найдена' });
+  const { ads } = req.body;
+  if (!Array.isArray(ads) || !ads.length) return res.status(400).json({ error: 'Нужен непустой массив ads' });
+
+  const date = todayStr();
+  const insertSnapshot = db.prepare(`
+    INSERT INTO ad_snapshots (
+      ad_page_id, ad_id, creative_body, creative_title, snapshot_url, thumbnail_url,
+      format, delivery_start, delivery_stop, languages, platforms, is_active,
+      eu_total_reach, reach_breakdown, link_caption, duplicate_group, fetch_date
+    ) VALUES (@ad_page_id, @ad_id, @creative_body, @creative_title, @snapshot_url, @thumbnail_url,
+      @format, @delivery_start, @delivery_stop, @languages, @platforms, @is_active,
+      @eu_total_reach, @reach_breakdown, @link_caption, @duplicate_group, @fetch_date)
+    ON CONFLICT(ad_page_id, ad_id, fetch_date) DO UPDATE SET
+      is_active=excluded.is_active, delivery_stop=excluded.delivery_stop, eu_total_reach=excluded.eu_total_reach,
+      reach_breakdown=excluded.reach_breakdown, thumbnail_url=excluded.thumbnail_url, format=excluded.format,
+      link_caption=excluded.link_caption
+  `);
+  let imported = 0;
+  for (const ad of ads) {
+    if (!ad.ad_id) continue;
+    await insertSnapshot.run({
+      ad_page_id: page.id, ad_id: String(ad.ad_id),
+      creative_body: ad.creative_body || '', creative_title: ad.creative_title || null,
+      snapshot_url: ad.snapshot_url || `https://www.facebook.com/ads/library/?id=${ad.ad_id}`,
+      thumbnail_url: ad.thumbnail_url || null, format: ad.format || 'unknown',
+      delivery_start: ad.delivery_start || null, delivery_stop: ad.delivery_stop || null,
+      languages: null, platforms: null,
+      is_active: ad.is_active === false ? 0 : 1,
+      eu_total_reach: ad.eu_total_reach ?? null, reach_breakdown: null,
+      link_caption: ad.link_caption || null,
+      duplicate_group: hashText(ad.creative_body || ''), fetch_date: date
+    });
+    imported++;
+  }
+  res.json({ ok: true, imported });
 });
 
 const schedule = process.env.CRON_SCHEDULE || '0 3 * * *';
