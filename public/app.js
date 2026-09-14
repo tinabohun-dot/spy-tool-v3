@@ -582,18 +582,29 @@ async function renderJobs() {
         <div class="job-row__right">
           ${statusHtml}
           ${buttonHtml}
+          <button type="button" class="btn btn--small btn--danger job-row__delete" data-page-id="${j.pageId}">✕ Удалить</button>
         </div>
       </div>`;
   }).join('');
 }
 
 $('#jobs-list').addEventListener('click', async (e) => {
-  const btn = e.target.closest('.job-row__refresh');
-  if (!btn) return;
-  btn.disabled = true;
-  btn.textContent = 'Запускаю...';
-  await fetch(`/api/pages/${btn.dataset.pageId}/refresh`, { method: 'POST' });
-  renderJobs();
+  const refreshBtn = e.target.closest('.job-row__refresh');
+  if (refreshBtn) {
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = 'Запускаю...';
+    await fetch(`/api/pages/${refreshBtn.dataset.pageId}/refresh`, { method: 'POST' });
+    renderJobs();
+    return;
+  }
+  const deleteBtn = e.target.closest('.job-row__delete');
+  if (deleteBtn) {
+    const pageName = deleteBtn.closest('.job-row').querySelector('.job-row__page').textContent;
+    if (!confirm(`Удалить "${pageName}" вместе со всеми собранными по ней объявлениями? Это необратимо.`)) return;
+    deleteBtn.disabled = true;
+    await fetch(`/api/pages/${deleteBtn.dataset.pageId}`, { method: 'DELETE' });
+    renderJobs();
+  }
 });
 
 // ---------- Аналитика: перформанс своих рекламных кабинетов ----------

@@ -120,7 +120,15 @@ app.post('/api/brands/:brandId/pages', async (req, res) => {
   }
 });
 
-app.delete('/api/pages/:id', async (req, res) => { await db.prepare('DELETE FROM ad_pages WHERE id = ?').run(req.params.id); res.json({ ok: true }); });
+// ON DELETE CASCADE в схеме не срабатывает — SQLite/Turso не проверяют внешние
+// ключи, пока не включишь PRAGMA foreign_keys, а мы её нигде не включаем.
+// Поэтому чистим зависимые таблицы явно, а не полагаемся на каскад.
+app.delete('/api/pages/:id', async (req, res) => {
+  await db.prepare('DELETE FROM rank_history WHERE ad_page_id = ?').run(req.params.id);
+  await db.prepare('DELETE FROM ad_snapshots WHERE ad_page_id = ?').run(req.params.id);
+  await db.prepare('DELETE FROM ad_pages WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
 
 app.post('/api/brands/:brandId/refresh', async (req, res) => {
   const days = +req.query.days || 7;
