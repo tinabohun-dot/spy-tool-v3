@@ -1024,16 +1024,27 @@ function renderPctBigNumber(sel, total, pctChange) {
   $(sel).innerHTML = `${total}${pctHtml}`;
 }
 
-// Общий рендер для CP и UA — обе метрики устроены одинаково (день/CP/формат),
-// просто по разным полям-датам, поэтому и делаем не мешая друг другу.
+// Рендер для CP: день/CP/формат. Столбик по дню разбит по CP, кто именно
+// поставил задачи в этот день (как в UA-отчёте, но по CP вместо воронки).
 function renderDailyReport(prefix, data) {
   renderPctBigNumber(`#${prefix}-number`, data.total, data.pctChange);
+
+  const days = data.byDay.map((d) => d.day);
+  const cps = [...new Set(days.flatMap((day) => Object.keys(data.byDayCp[day] || {})))];
+  const datasets = cps.map((cp, i) => ({
+    label: cp,
+    data: days.map((day) => data.byDayCp[day]?.[cp] || 0),
+    backgroundColor: CATEGORY_COLORS[i % CATEGORY_COLORS.length]
+  }));
 
   destroyChart(prefix + 'ByDay');
   charts[prefix + 'ByDay'] = new Chart($(`#chart-${prefix}-by-day`), {
     type: 'bar',
-    data: { labels: data.byDay.map((d) => d.day), datasets: [{ label: 'Задач', data: data.byDay.map((d) => d.count), backgroundColor: '#d95f2b' }] },
-    options: { plugins: { legend: { display: false } } }
+    data: { labels: days, datasets },
+    options: {
+      plugins: { legend: { display: cps.length > 1 } },
+      scales: { x: { stacked: true }, y: { stacked: true } }
+    }
   });
 
   renderGenericStackedBar(`#${prefix}-format-bar`, `#${prefix}-format-legend`, [
@@ -1041,7 +1052,7 @@ function renderDailyReport(prefix, data) {
     { label: 'Static', value: data.static, color: '#d95f2b' }
   ]);
 
-  renderBarListWithTasks(`#${prefix}-bars`, data.byCp, data.byCpTasks);
+  renderFunnelBarWithDayGroups(`#${prefix}-bars`, data.byCp, data.byCpTasksByDay);
 }
 
 async function loadCp(since, until) {

@@ -159,7 +159,8 @@ async function cpReport(since, until) {
 
   const byDay = {};
   const byCp = {};
-  const byCpTasks = {};
+  const byDayCp = {};
+  const byCpTasksByDay = {};
   let video = 0; let staticCount = 0;
 
   for (const t of inWindow) {
@@ -168,7 +169,11 @@ async function cpReport(since, until) {
     if (t.creoType === 'Video') video++; else if (t.creoType === 'Static') staticCount++;
     const cp = t.cp || '—';
     byCp[cp] = (byCp[cp] || 0) + 1;
-    pushTask(byCpTasks, cp, t);
+
+    (byDayCp[day] ||= {});
+    byDayCp[day][cp] = (byDayCp[day][cp] || 0) + 1;
+    (byCpTasksByDay[cp] ||= {});
+    pushTask(byCpTasksByDay[cp], day, t);
   }
 
   const prevPeriod = previousEquivalentPeriod(since, until);
@@ -183,7 +188,8 @@ async function cpReport(since, until) {
     static: staticCount,
     byDay: Object.entries(byDay).map(([day, count]) => ({ day, count })).sort((a, b) => a.day.localeCompare(b.day)),
     byCp: Object.fromEntries(Object.entries(byCp).sort((a, b) => b[1] - a[1])),
-    byCpTasks
+    byDayCp,
+    byCpTasksByDay
   };
 }
 
