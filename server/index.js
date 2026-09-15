@@ -45,14 +45,23 @@ async function maybeRunMorningTopCreoCheck() {
     if (warsawHour < TOP_CREO_CHECK_HOUR) return;
 
     const today = warsawDateString(0);
-    const row = await db.prepare("SELECT value FROM app_meta WHERE key = 'last_top_creo_check_date'").get();
-    if (row?.value === today) return;
+    // "Прочитать дату, потом записать" — не атомарно: два почти одновременных
+    // запроса (например, браузер параллельно бьёт на несколько эндпоинтов при
+    // загрузке страницы) оба могли проскочить SELECT ДО того, как первый из
+    // них успевал записать "сегодня уже сделано" — отсюда дубли уведомлений
+    // в Slack. UPDATE ... WHERE value != ? — атомарная операция на уровне
+    // БД: из нескольких одновременных попыток "забрать" сегодняшний день
+    // реально изменит строку только одна, остальные увидят changes = 0.
+    await db.prepare(`
+      INSERT INTO app_meta (key, value) VALUES ('last_top_creo_check_date', '')
+      ON CONFLICT(key) DO NOTHING
+    `).run();
+    const claim = await db.prepare(`
+      UPDATE app_meta SET value = ? WHERE key = 'last_top_creo_check_date' AND value != ?
+    `).run(today, today);
+    if (!claim.changes) return;
 
     topCreoCheckRunning = true;
-    await db.prepare(`
-      INSERT INTO app_meta (key, value) VALUES ('last_top_creo_check_date', ?)
-      ON CONFLICT(key) DO UPDATE SET value = excluded.value
-    `).run(today);
     console.log('[top-creo] Утренняя проверка запущена первым визитом:', today);
     await checkNewTopCreatives();
   } catch (e) {
