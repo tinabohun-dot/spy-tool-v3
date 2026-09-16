@@ -311,8 +311,14 @@ app.get('/api/analytics/users', async (req, res) => {
 // нужному датасету только тот фильтр, который реально выбран.
 app.get('/api/analytics/audience', async (req, res) => {
   try {
-    const { since, until, gender, age, country } = req.query;
+    const { since, until } = req.query;
     if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until' });
+    // Каждый параметр может повторяться (?gender=male&gender=female) —
+    // express/qs сам собирает такие в массив, но если значение ровно одно,
+    // отдаёт голую строку, поэтому нормализуем всё через [].concat.
+    const gender = [].concat(req.query.gender || []);
+    const age = [].concat(req.query.age || []);
+    const country = [].concat(req.query.country || []);
 
     const accNames = Object.keys(metaMarketing.accounts());
     if (!accNames.length) return res.status(400).json({ error: 'META_MARKETING_ACCOUNTS не задан в server/.env' });
@@ -341,11 +347,12 @@ app.get('/api/analytics/audience', async (req, res) => {
     const countrySummary = summaryByDimension(countryRows, 'country');
 
     // Гео — из отдельного датасета (комбинировать с возрастом/гендером Meta
-    // не даёт), возраст/гендер — из своего, можно фильтровать по одному или
-    // сразу по обоим одновременно, раз они и так лежат в одной выдаче.
-    const sourceRows = country
-      ? countryRows.filter((r) => r.country === country)
-      : ageGenderRows.filter((r) => (!gender || r.gender === gender) && (!age || r.age === age));
+    // не даёт), возраст/гендер — из своего. Внутри каждого измерения можно
+    // выбрать сразу несколько значений (OR): например, два конкретных гео
+    // или сразу два возрастных диапазона.
+    const sourceRows = country.length
+      ? countryRows.filter((r) => country.includes(r.country))
+      : ageGenderRows.filter((r) => (!gender.length || gender.includes(r.gender)) && (!age.length || age.includes(r.age)));
 
     const creatives = await metaMarketing.attachPreviews(
       metaMarketing.groupRowsByCreative(sourceRows).map(metaMarketing.buildCreativeEntry)

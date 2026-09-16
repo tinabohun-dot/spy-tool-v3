@@ -627,7 +627,12 @@ let analyticsNameFilter = '';
 let analyticsSort = { key: 'spend', dir: 'desc' };
 let analyticsVisibleCreatives = [];
 let analyticsSubtab = 'creatives';
-let audienceFilter = { dimension: null, value: null }; // {dimension: 'gender'|'age'|'country', value}
+// Мультивыбор в пределах каждого измерения (несколько стран, несколько
+// возрастов и т.д. одновременно) — но гео нельзя совместить с возрастом/
+// гендером, это ограничение самого Meta API (см. fetchAllAccountsInsightsBreakdown),
+// а не что-то, что можно снять на фронте.
+let audienceFilter = { gender: [], age: [], country: [] };
+let audienceSort = { key: 'spend', dir: 'desc' };
 const analyticsSubtabLoaded = {};
 
 function initAnalyticsView() {
@@ -814,6 +819,25 @@ function renderAnalyticsRow(c) {
     </tr>`;
 }
 
+const GRADE_RANK = { 'Alpha': 5, 'Scale': 4, 'Test': 3, 'Promising': 2, 'Bad': 1, 'No purchases': 0 };
+
+// Общая сортировка для любой таблицы креативов (Все креативы, Аудитория —
+// обе рендерят один и тот же набор полей через renderAnalyticsRow), чтобы
+// поведение клика по колонке было идентичным и не расходилось при правках.
+function sortCreatives(creatives, { key, dir }) {
+  return [...creatives].sort((a, b) => {
+    let cmp;
+    if (key === 'grade') {
+      cmp = (GRADE_RANK[a.grade] ?? -1) - (GRADE_RANK[b.grade] ?? -1);
+    } else {
+      const av = a[key]; const bv = b[key];
+      if (typeof av === 'string' || typeof bv === 'string') cmp = String(av ?? '').localeCompare(String(bv ?? ''));
+      else cmp = (av ?? -Infinity) - (bv ?? -Infinity);
+    }
+    return dir === 'asc' ? cmp : -cmp;
+  });
+}
+
 function renderAnalyticsView() {
   if (!analyticsData) return;
   const source = analyticsAccountFilter === 'all'
@@ -830,19 +854,8 @@ function renderAnalyticsView() {
     return true;
   });
 
-  const { key, dir } = analyticsSort;
-  const GRADE_RANK = { 'Alpha': 5, 'Scale': 4, 'Test': 3, 'Promising': 2, 'Bad': 1, 'No purchases': 0 };
-  creatives = [...creatives].sort((a, b) => {
-    let cmp;
-    if (key === 'grade') {
-      cmp = (GRADE_RANK[a.grade] ?? -1) - (GRADE_RANK[b.grade] ?? -1);
-    } else {
-      const av = a[key]; const bv = b[key];
-      if (typeof av === 'string' || typeof bv === 'string') cmp = String(av ?? '').localeCompare(String(bv ?? ''));
-      else cmp = (av ?? -Infinity) - (bv ?? -Infinity);
-    }
-    return dir === 'asc' ? cmp : -cmp;
-  });
+  creatives = sortCreatives(creatives, analyticsSort);
+  const { key } = analyticsSort;
 
   $all('#analytics-table th[data-sort]').forEach((th) => th.classList.toggle('is-sorted', th.dataset.sort === key));
   $('#analytics-tbody').innerHTML = creatives.length
@@ -998,9 +1011,9 @@ const AUDIENCE_GENDER_LABELS = { male: 'Мужчины', female: 'Женщины
 const AUDIENCE_DIMENSION_LABELS = { gender: 'гендер', age: 'возраст', country: 'гео' };
 
 function renderAudienceBars(sel, summary, dimension, order) {
-  let entries = Object.entries(summary).map(([key, v]) => [key, v.purchases]);
+  let entries = Object.entries(summary).map(([key, v]) => [key, v.purchases]).filter(([, val]) => val > 0);
   if (order) {
-    const known = order.filter((k) => k in summary).map((k) => [k, summary[k].purchases]);
+    const known = order.filter((k) => k in summary && summary[k].purchases > 0).map((k) => [k, summary[k].purchases]);
     const rest = entries.filter(([k]) => !order.includes(k));
     entries = known.concat(rest);
   } else {
@@ -1008,7 +1021,7 @@ function renderAudienceBars(sel, summary, dimension, order) {
   }
   const max = Math.max(1, ...entries.map((e) => e[1]));
   $(sel).innerHTML = entries.length ? entries.map(([key, val], i) => {
-    const active = audienceFilter.dimension === dimension && audienceFilter.value === key;
+    const active = audienceFilter[dimension].includes(key);
     const label = dimension === 'gender' ? (AUDIENCE_GENDER_LABELS[key] || key) : key;
     return `
       <div class="bar-row bar-row--clickable${active ? ' is-active' : ''}" data-dimension="${dimension}" data-value="${key}">
@@ -1031,30 +1044,52 @@ function renderAudienceSummary(summary, count) {
     </div>`;
 }
 
+function describeAudienceFilter() {
+  const parts = [];
+  if (audienceFilter.gender.length) parts.push(`гендер = ${audienceFilter.gender.map((g) => AUDIENCE_GENDER_LABELS[g] || g).join(', ')}`);
+  if (audienceFilter.age.length) parts.push(`возраст = ${audienceFilter.age.join(', ')}`);
+  if (audienceFilter.country.length) parts.push(`гео = ${audienceFilter.country.join(', ')}`);
+  return parts.length ? `Фильтр: ${parts.join('; ')}` : 'Фильтр не выбран — показаны все креативы';
+}
+
+function hasAudienceFilter() {
+  return audienceFilter.gender.length || audienceFilter.age.length || audienceFilter.country.length;
+}
+
+// Каждый клик по бару (гендер/возраст/гео) перезапускает загрузку — если
+// кликнуть по двум значениям быстро подряд, второй запрос может ответить
+// раньше первого, и более медленный первый ответ, придя позже, затрёт уже
+// показанный корректный результат. Пропускаем рендер любого ответа, для
+// которого успел уйти более новый запрос.
+let audienceRequestSeq = 0;
 async function loadAudience(since, until) {
+  const seq = ++audienceRequestSeq;
   $('#analytics-status').textContent = 'Загружаю...';
   try {
     const params = new URLSearchParams({ since, until });
-    if (audienceFilter.dimension) params.set(audienceFilter.dimension, audienceFilter.value);
+    for (const g of audienceFilter.gender) params.append('gender', g);
+    for (const a of audienceFilter.age) params.append('age', a);
+    for (const c of audienceFilter.country) params.append('country', c);
 
     const data = await fetchJson(`/api/analytics/audience?${params}`);
+    if (seq !== audienceRequestSeq) return;
     $('#analytics-status').textContent = '';
 
     renderAudienceBars('#audience-gender-bars', data.genderSummary, 'gender');
     renderAudienceBars('#audience-age-bars', data.ageSummary, 'age', AGE_ORDER);
     renderAudienceBars('#audience-country-bars', data.countrySummary, 'country');
 
-    $('#audience-active-filter').textContent = audienceFilter.dimension
-      ? `Фильтр: ${AUDIENCE_DIMENSION_LABELS[audienceFilter.dimension]} = ${audienceFilter.dimension === 'gender' ? (AUDIENCE_GENDER_LABELS[audienceFilter.value] || audienceFilter.value) : audienceFilter.value}`
-      : 'Фильтр не выбран — показаны все креативы';
-    $('#audience-clear-filter').hidden = !audienceFilter.dimension;
+    $('#audience-active-filter').textContent = describeAudienceFilter();
+    $('#audience-clear-filter').hidden = !hasAudienceFilter();
 
     renderAudienceSummary(data.summary, data.creatives.length);
-    const sorted = [...data.creatives].sort((a, b) => (b.spend ?? 0) - (a.spend ?? 0));
+    const sorted = sortCreatives(data.creatives, audienceSort);
+    $all('#audience-table th[data-sort]').forEach((th) => th.classList.toggle('is-sorted', th.dataset.sort === audienceSort.key));
     $('#audience-tbody').innerHTML = sorted.length
       ? sorted.map(renderAnalyticsRow).join('')
       : '<tr><td colspan="33" class="empty-note">Нет данных по выбранному фильтру.</td></tr>';
   } catch (err) {
+    if (seq !== audienceRequestSeq) return;
     $('#analytics-status').textContent = 'Ошибка: ' + err.message;
   }
 }
@@ -1063,8 +1098,14 @@ function handleAudienceBarClick(e) {
   const row = e.target.closest('.bar-row--clickable');
   if (!row) return;
   const { dimension, value } = row.dataset;
-  const isSame = audienceFilter.dimension === dimension && audienceFilter.value === value;
-  audienceFilter = isSame ? { dimension: null, value: null } : { dimension, value };
+  // Гео исключает возраст/гендер и наоборот — совместить их в одном запросе
+  // не даёт сам Meta API, так что выбор одного явно сбрасывает другую группу,
+  // а не молча её игнорирует.
+  if (dimension === 'country') { audienceFilter.age = []; audienceFilter.gender = []; }
+  else { audienceFilter.country = []; }
+  const arr = audienceFilter[dimension];
+  const idx = arr.indexOf(value);
+  if (idx === -1) arr.push(value); else arr.splice(idx, 1);
   loadAudience($('#analytics-since').value, $('#analytics-until').value);
 }
 $('#audience-gender-bars').addEventListener('click', handleAudienceBarClick);
@@ -1072,7 +1113,17 @@ $('#audience-age-bars').addEventListener('click', handleAudienceBarClick);
 $('#audience-country-bars').addEventListener('click', handleAudienceBarClick);
 
 $('#audience-clear-filter').addEventListener('click', () => {
-  audienceFilter = { dimension: null, value: null };
+  audienceFilter = { gender: [], age: [], country: [] };
+  loadAudience($('#analytics-since').value, $('#analytics-until').value);
+});
+
+$('#audience-table thead').addEventListener('click', (e) => {
+  const th = e.target.closest('th[data-sort]');
+  if (!th) return;
+  const key = th.dataset.sort;
+  audienceSort = audienceSort.key === key
+    ? { key, dir: audienceSort.dir === 'desc' ? 'asc' : 'desc' }
+    : { key, dir: 'desc' };
   loadAudience($('#analytics-since').value, $('#analytics-until').value);
 });
 

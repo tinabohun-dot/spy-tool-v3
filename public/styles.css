@@ -252,15 +252,17 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
    header: it stuck relative to this box's own top instead of the viewport,
    landing deep inside the row list. Fix: give this box its own bounded height
    and let IT scroll internally, so "sticky" here means what it should. */
-.table-scroll:has(.analytics-table) {
+.table-scroll:has(table) {
   max-height: calc(100vh - var(--analytics-sticky-offset, 0px) - 32px);
   overflow-y: auto;
 }
 .analytics-table { white-space: nowrap; }
 .analytics-sticky-top { position: sticky; top: 0; z-index: 3; background: var(--bg); padding-top: 4px; }
-.analytics-table th {
-  cursor: pointer; user-select: none; position: sticky; top: 0; z-index: 2; background: var(--panel);
-}
+/* Липкая шапка — на любой таблице с этим базовым классом .table, не только
+   на "аналитических": строка заголовков должна оставаться на месте при
+   скролле длинного списка везде, где он есть. */
+.table th { position: sticky; top: 0; z-index: 2; background: var(--panel); }
+.analytics-table th { cursor: pointer; user-select: none; }
 .analytics-table th:hover { color: var(--ink); }
 .analytics-table th.is-sorted::after { content: ' \25BE'; }
 .analytics-table td { font-variant-numeric: tabular-nums; }
