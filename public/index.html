@@ -226,6 +226,7 @@
         <button type="button" class="tab" data-subtab="tops">TOPS</button>
         <button type="button" class="tab" data-subtab="formats">Formats</button>
         <button type="button" class="tab" data-subtab="users">Users</button>
+        <button type="button" class="tab" data-subtab="audience">Аудитория</button>
         <button type="button" class="tab" data-subtab="production">Design</button>
         <button type="button" class="tab" data-subtab="cp">CP</button>
         <button type="button" class="tab" data-subtab="ua">UA</button>
@@ -391,6 +392,73 @@
             <h3>Страны</h3>
             <div id="users-country-bars" class="bar-list"></div>
           </div>
+        </div>
+      </div>
+
+      <div id="subtab-audience" class="tab-panel">
+        <p class="hint">Метрики по каждому креативу с фильтром по одному срезу за раз — гео нельзя совместить с возрастом/гендером, так ограничивает сам Meta API. Кликни по строке в любом из трёх блоков ниже, чтобы применить фильтр.</p>
+        <div class="analytics-table-toolbar">
+          <span id="audience-active-filter" class="hint"></span>
+          <button type="button" id="audience-clear-filter" class="btn btn--ghost" hidden>✕ Сбросить фильтр</button>
+        </div>
+        <div class="panel-grid">
+          <div class="panel-card">
+            <h3>Гендер</h3>
+            <div id="audience-gender-bars" class="bar-list"></div>
+          </div>
+          <div class="panel-card">
+            <h3>Возраст</h3>
+            <div id="audience-age-bars" class="bar-list"></div>
+          </div>
+          <div class="panel-card">
+            <h3>Гео</h3>
+            <div id="audience-country-bars" class="bar-list"></div>
+          </div>
+        </div>
+
+        <div id="audience-summary" class="panel-grid analytics-summary"></div>
+
+        <div class="table-scroll">
+          <table class="table analytics-table" id="audience-table">
+            <thead>
+              <tr>
+                <th>Превью</th>
+                <th>Название</th>
+                <th>Тип</th>
+                <th>Grade</th>
+                <th>Funnel</th>
+                <th>Spend</th>
+                <th>Purchases</th>
+                <th>CPA</th>
+                <th>CTR</th>
+                <th>Impressions</th>
+                <th>Reach</th>
+                <th>Frequency</th>
+                <th>Clicks</th>
+                <th>Unique Clicks</th>
+                <th>Link Clicks</th>
+                <th>Landing Views</th>
+                <th>Cost/Landing</th>
+                <th>CPM</th>
+                <th>CPC</th>
+                <th>Add to Cart</th>
+                <th>Leads</th>
+                <th>Purchase Value</th>
+                <th>Video Plays</th>
+                <th>Hook Rate</th>
+                <th>Video 25%</th>
+                <th>Video 50%</th>
+                <th>Video 75%</th>
+                <th>Video 100%</th>
+                <th>Avg Watch</th>
+                <th>Копий</th>
+                <th>Аккаунты</th>
+                <th>Campaign</th>
+                <th>Статус</th>
+              </tr>
+            </thead>
+            <tbody id="audience-tbody"></tbody>
+          </table>
         </div>
       </div>
 

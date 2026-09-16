@@ -143,6 +143,49 @@ async function fetchAllAccountsInsights(since, until) {
   return rows;
 }
 
+// Те же поля, что и fetchAccountInsights (level=ad, purchases/spend по
+// объявлению), но с разбивкой по демографии — для вкладки "Аудитория".
+// Важно: Meta не разрешает совмещать в одном запросе больше 2 не-временных
+// разбивок сразу — age+gender вместе работают, country отдельно, а
+// age+gender+country все вместе Meta прямо отклоняет ошибкой
+// "Current combination of data breakdown columns ... is invalid" (проверено
+// напрямую на реальном API). Поэтому вызывающий код всегда просит либо
+// ['age','gender'], либо ['country'], никогда все три сразу.
+async function fetchAccountInsightsBreakdown(accountId, since, until, breakdowns) {
+  const fields = [
+    'ad_id', 'ad_name', 'campaign_name',
+    'impressions', 'reach', 'clicks', 'unique_clicks', 'spend',
+    'actions', 'action_values',
+    'video_play_actions', 'video_p25_watched_actions', 'video_p50_watched_actions',
+    'video_p75_watched_actions', 'video_p100_watched_actions', 'video_avg_time_watched_actions'
+  ].join(',');
+  const url = new URL(`https://graph.facebook.com/${API_VERSION}/${accountId}/insights`);
+  url.searchParams.set('fields', fields);
+  url.searchParams.set('time_range', JSON.stringify({ since, until }));
+  url.searchParams.set('action_attribution_windows', JSON.stringify(['7d_click']));
+  url.searchParams.set('level', 'ad');
+  url.searchParams.set('breakdowns', breakdowns.join(','));
+  url.searchParams.set('limit', '500');
+  url.searchParams.set('access_token', token());
+  return paginate(url.toString());
+}
+
+// Аккаунты запрашиваем параллельно, а не по очереди — с разбивкой по
+// демографии страниц у Meta заметно больше, чем без неё (age+gender/country
+// умножают число строк), и на широких периодах (30 дней) последовательный
+// обход 3+ аккаунтов ощутимо копится в секунды ожидания.
+async function fetchAllAccountsInsightsBreakdown(since, until, breakdowns) {
+  const accs = accounts();
+  const perAccount = await Promise.all(
+    Object.entries(accs).map(async ([accName, accId]) => {
+      const accRows = await fetchAccountInsightsBreakdown(accId, since, until, breakdowns);
+      for (const r of accRows) r._accountName = accName;
+      return accRows;
+    })
+  );
+  return perAccount.flat();
+}
+
 // Список ad name по всем аккаунтам, без фильтра по дате — чтобы понять, какие
 // Task ID из Airtable вообще когда-либо доходили до реального запуска в Meta
 // (level=ad + /ads возвращает объявления в любом статусе за всё время, в
@@ -437,6 +480,7 @@ async function attachPreviews(creatives) {
 
 module.exports = {
   accounts, fetchAllAccountsInsights, fetchAccountInsights,
+  fetchAllAccountsInsightsBreakdown,
   groupRowsByCreative, buildCreativeEntry, summarize, attachPreviews,
   fetchLaunchedTaskNumbers, fetchPlatformBreakdown, fetchDemographics,
   SUCCESS_GRADES

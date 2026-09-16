@@ -627,6 +627,7 @@ let analyticsNameFilter = '';
 let analyticsSort = { key: 'spend', dir: 'desc' };
 let analyticsVisibleCreatives = [];
 let analyticsSubtab = 'creatives';
+let audienceFilter = { dimension: null, value: null }; // {dimension: 'gender'|'age'|'country', value}
 const analyticsSubtabLoaded = {};
 
 function initAnalyticsView() {
@@ -651,6 +652,7 @@ function loadActiveSubtab() {
   if (analyticsSubtab === 'tops') return loadTops(since, until);
   if (analyticsSubtab === 'formats') return loadFormats(since, until);
   if (analyticsSubtab === 'users') return loadUsers(since, until);
+  if (analyticsSubtab === 'audience') return loadAudience(since, until);
   if (analyticsSubtab === 'production') return loadProduction(since, until);
   if (analyticsSubtab === 'cp') return loadCp(since, until);
   if (analyticsSubtab === 'ua') return loadUa(since, until);
@@ -988,6 +990,91 @@ async function loadUsers(since, until) {
     $('#analytics-status').textContent = 'Ошибка: ' + err.message;
   }
 }
+
+// ---------- Аудитория: метрики по креативам с фильтром по одному срезу
+// (гендер/возраст/гео) за раз — совместить гео с возрастом/гендером Meta не
+// позволяет в одном запросе, см. комментарий у fetchAllAccountsInsightsBreakdown.
+const AUDIENCE_GENDER_LABELS = { male: 'Мужчины', female: 'Женщины', unknown: 'Неизвестно' };
+const AUDIENCE_DIMENSION_LABELS = { gender: 'гендер', age: 'возраст', country: 'гео' };
+
+function renderAudienceBars(sel, summary, dimension, order) {
+  let entries = Object.entries(summary).map(([key, v]) => [key, v.purchases]);
+  if (order) {
+    const known = order.filter((k) => k in summary).map((k) => [k, summary[k].purchases]);
+    const rest = entries.filter(([k]) => !order.includes(k));
+    entries = known.concat(rest);
+  } else {
+    entries.sort((a, b) => b[1] - a[1]);
+  }
+  const max = Math.max(1, ...entries.map((e) => e[1]));
+  $(sel).innerHTML = entries.length ? entries.map(([key, val], i) => {
+    const active = audienceFilter.dimension === dimension && audienceFilter.value === key;
+    const label = dimension === 'gender' ? (AUDIENCE_GENDER_LABELS[key] || key) : key;
+    return `
+      <div class="bar-row bar-row--clickable${active ? ' is-active' : ''}" data-dimension="${dimension}" data-value="${key}">
+        <span class="bar-row__label">${label}</span>
+        <span class="bar-row__track"><span class="bar-row__fill" style="width:${(val / max) * 100}%;background:${CATEGORY_COLORS[i % CATEGORY_COLORS.length]}"></span></span>
+        <span class="bar-row__value">${val}</span>
+      </div>`;
+  }).join('') : '<p class="hint">Пока нет данных</p>';
+}
+
+function renderAudienceSummary(summary, count) {
+  $('#audience-summary').innerHTML = `
+    <div class="panel-card"><h3>Расход</h3><p class="big-number">${money(summary.totalSpend)}</p></div>
+    <div class="panel-card"><h3>Покупки</h3><p class="big-number">${summary.totalPurchases}</p></div>
+    <div class="panel-card"><h3>CPA</h3><p class="big-number">${summary.overallCpa ? '$' + summary.overallCpa.toFixed(2) : '—'}</p></div>
+    <div class="panel-card">
+      <h3>Success Rate</h3>
+      <p class="big-number">${Math.round(summary.successRate * 100)}%</p>
+      <p class="hint">${summary.successCount} из ${count} креативов</p>
+    </div>`;
+}
+
+async function loadAudience(since, until) {
+  $('#analytics-status').textContent = 'Загружаю...';
+  try {
+    const params = new URLSearchParams({ since, until });
+    if (audienceFilter.dimension) params.set(audienceFilter.dimension, audienceFilter.value);
+
+    const data = await fetchJson(`/api/analytics/audience?${params}`);
+    $('#analytics-status').textContent = '';
+
+    renderAudienceBars('#audience-gender-bars', data.genderSummary, 'gender');
+    renderAudienceBars('#audience-age-bars', data.ageSummary, 'age', AGE_ORDER);
+    renderAudienceBars('#audience-country-bars', data.countrySummary, 'country');
+
+    $('#audience-active-filter').textContent = audienceFilter.dimension
+      ? `Фильтр: ${AUDIENCE_DIMENSION_LABELS[audienceFilter.dimension]} = ${audienceFilter.dimension === 'gender' ? (AUDIENCE_GENDER_LABELS[audienceFilter.value] || audienceFilter.value) : audienceFilter.value}`
+      : 'Фильтр не выбран — показаны все креативы';
+    $('#audience-clear-filter').hidden = !audienceFilter.dimension;
+
+    renderAudienceSummary(data.summary, data.creatives.length);
+    const sorted = [...data.creatives].sort((a, b) => (b.spend ?? 0) - (a.spend ?? 0));
+    $('#audience-tbody').innerHTML = sorted.length
+      ? sorted.map(renderAnalyticsRow).join('')
+      : '<tr><td colspan="33" class="empty-note">Нет данных по выбранному фильтру.</td></tr>';
+  } catch (err) {
+    $('#analytics-status').textContent = 'Ошибка: ' + err.message;
+  }
+}
+
+function handleAudienceBarClick(e) {
+  const row = e.target.closest('.bar-row--clickable');
+  if (!row) return;
+  const { dimension, value } = row.dataset;
+  const isSame = audienceFilter.dimension === dimension && audienceFilter.value === value;
+  audienceFilter = isSame ? { dimension: null, value: null } : { dimension, value };
+  loadAudience($('#analytics-since').value, $('#analytics-until').value);
+}
+$('#audience-gender-bars').addEventListener('click', handleAudienceBarClick);
+$('#audience-age-bars').addEventListener('click', handleAudienceBarClick);
+$('#audience-country-bars').addEventListener('click', handleAudienceBarClick);
+
+$('#audience-clear-filter').addEventListener('click', () => {
+  audienceFilter = { dimension: null, value: null };
+  loadAudience($('#analytics-since').value, $('#analytics-until').value);
+});
 
 async function loadProduction(since, until) {
   $('#analytics-status').textContent = 'Загружаю...';

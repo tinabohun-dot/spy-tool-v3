@@ -303,6 +303,66 @@ app.get('/api/analytics/users', async (req, res) => {
   }
 });
 
+// Аудитория: те же метрики по креативам, что и в "Все креативы", но с
+// возможностью выбрать срез по гендеру/возрасту/гео. Meta не разрешает
+// запросить все три разбивки сразу (см. комментарий у
+// fetchAllAccountsInsightsBreakdown), поэтому берём их двумя отдельными
+// запросами — возраст+гендер вместе, гео отдельно — и применяем к
+// нужному датасету только тот фильтр, который реально выбран.
+app.get('/api/analytics/audience', async (req, res) => {
+  try {
+    const { since, until, gender, age, country } = req.query;
+    if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until' });
+
+    const accNames = Object.keys(metaMarketing.accounts());
+    if (!accNames.length) return res.status(400).json({ error: 'META_MARKETING_ACCOUNTS не задан в server/.env' });
+
+    const [ageGenderRows, countryRows] = await Promise.all([
+      metaMarketing.fetchAllAccountsInsightsBreakdown(since, until, ['age', 'gender']),
+      metaMarketing.fetchAllAccountsInsightsBreakdown(since, until, ['country'])
+    ]);
+
+    // Сводки по каждому измерению всегда считаем по полным, нефильтрованным
+    // данным — это то, что рисуется в столбиках сверху, чтобы по ним и
+    // выбирать срез, а не только смотреть на уже применённый фильтр.
+    function summaryByDimension(rows, dimension) {
+      const out = {};
+      for (const row of rows) {
+        const key = row[dimension] || 'unknown';
+        const entry = metaMarketing.buildCreativeEntry(row);
+        if (!out[key]) out[key] = { spend: 0, purchases: 0 };
+        out[key].spend += entry.spend;
+        out[key].purchases += entry.purchases;
+      }
+      return out;
+    }
+    const genderSummary = summaryByDimension(ageGenderRows, 'gender');
+    const ageSummary = summaryByDimension(ageGenderRows, 'age');
+    const countrySummary = summaryByDimension(countryRows, 'country');
+
+    // Гео — из отдельного датасета (комбинировать с возрастом/гендером Meta
+    // не даёт), возраст/гендер — из своего, можно фильтровать по одному или
+    // сразу по обоим одновременно, раз они и так лежат в одной выдаче.
+    const sourceRows = country
+      ? countryRows.filter((r) => r.country === country)
+      : ageGenderRows.filter((r) => (!gender || r.gender === gender) && (!age || r.age === age));
+
+    const creatives = await metaMarketing.attachPreviews(
+      metaMarketing.groupRowsByCreative(sourceRows).map(metaMarketing.buildCreativeEntry)
+    );
+
+    res.json({
+      accounts: accNames,
+      genderSummary, ageSummary, countrySummary,
+      summary: metaMarketing.summarize(creatives),
+      creatives
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 // Запустить сбор снепшота для одной конкретной Ad Page (не всего бренда) —
 // пригодится, когда во вкладке "Сбор данных" видно, что по странице нет
 // данных или сбор давно не запускался.
