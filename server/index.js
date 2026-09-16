@@ -309,6 +309,31 @@ app.get('/api/analytics/users', async (req, res) => {
 // fetchAllAccountsInsightsBreakdown), поэтому берём их двумя отдельными
 // запросами — возраст+гендер вместе, гео отдельно — и применяем к
 // нужному датасету только тот фильтр, который реально выбран.
+// Смена одного фильтра (гендер/возраст/гео) не меняет период — сами сырые
+// строки от Meta для этого since/until остаются теми же, меняется только
+// то, как мы их дальше группируем. Без кеша каждый клик по фильтру заново
+// гонял оба тяжёлых запроса к Meta (10-20+ секунд) — а пока первый клик ещё
+// грузился, повторный клик по той же плашке (вполне естественная реакция на
+// "а сработало ли?") просто снимал фильтр обратно, потому что клик — это
+// переключатель. Кешируем сырые строки на несколько минут: смена фильтра в
+// пределах того же периода теперь почти мгновенная, и такой гонки не
+// возникает уже потому, что ответ не заставляет себя ждать.
+const audienceRowsCache = new Map(); // key: `${since}|${until}` -> { ageGenderRows, countryRows, expiresAt }
+const AUDIENCE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function getAudienceRows(since, until) {
+  const key = `${since}|${until}`;
+  const cached = audienceRowsCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached;
+  const [ageGenderRows, countryRows] = await Promise.all([
+    metaMarketing.fetchAllAccountsInsightsBreakdown(since, until, ['age', 'gender']),
+    metaMarketing.fetchAllAccountsInsightsBreakdown(since, until, ['country'])
+  ]);
+  const entry = { ageGenderRows, countryRows, expiresAt: Date.now() + AUDIENCE_CACHE_TTL_MS };
+  audienceRowsCache.set(key, entry);
+  return entry;
+}
+
 app.get('/api/analytics/audience', async (req, res) => {
   try {
     const { since, until } = req.query;
@@ -323,10 +348,7 @@ app.get('/api/analytics/audience', async (req, res) => {
     const accNames = Object.keys(metaMarketing.accounts());
     if (!accNames.length) return res.status(400).json({ error: 'META_MARKETING_ACCOUNTS не задан в server/.env' });
 
-    const [ageGenderRows, countryRows] = await Promise.all([
-      metaMarketing.fetchAllAccountsInsightsBreakdown(since, until, ['age', 'gender']),
-      metaMarketing.fetchAllAccountsInsightsBreakdown(since, until, ['country'])
-    ]);
+    const { ageGenderRows, countryRows } = await getAudienceRows(since, until);
 
     // Сводки по каждому измерению всегда считаем по полным, нефильтрованным
     // данным — это то, что рисуется в столбиках сверху, чтобы по ним и
