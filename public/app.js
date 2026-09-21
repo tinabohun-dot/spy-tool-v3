@@ -1,5 +1,6 @@
 const API = '';
 let currentBrandId = null;
+let currentBrand = null;
 let currentPages = [];
 let charts = {};
 let adsData = [];
@@ -9,6 +10,34 @@ let metricsPeriodDays = 7;
 
 function $(sel, root = document) { return root.querySelector(sel); }
 function $all(sel, root = document) { return [...root.querySelectorAll(sel)]; }
+
+// ---------- Редактор тегов (переиспользуется в модалках бренда и страницы) ----------
+// Держит массив тегов в замыкании и перерисовывает чипы сам — вызывающему
+// коду достаточно один раз инициализировать и потом просто прочитать getTags().
+function initTagEditor(chipsEl, inputEl, initialTags = []) {
+  let tags = [...initialTags];
+  function render() {
+    chipsEl.innerHTML = tags.map((t, i) => `
+      <span class="tag-editor__chip">${t}<button type="button" data-i="${i}">×</button></span>
+    `).join('');
+  }
+  chipsEl.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-i]');
+    if (!btn) return;
+    tags.splice(+btn.dataset.i, 1);
+    render();
+  });
+  inputEl.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const tag = inputEl.value.trim();
+    if (tag && !tags.includes(tag)) tags.push(tag);
+    inputEl.value = '';
+    render();
+  });
+  render();
+  return { getTags: () => tags };
+}
 
 // ---------- Навигация ----------
 $all('.side-nav__item').forEach((btn) => {
@@ -30,6 +59,13 @@ $('#back-to-library').addEventListener('click', () => {
   $('#view-library').hidden = false;
 });
 
+$('#edit-brand-btn').addEventListener('click', () => openEditBrandDialog(currentBrand));
+$('#delete-brand-btn').addEventListener('click', async () => {
+  if (!(await deleteBrand(currentBrand))) return;
+  $('#view-brand').hidden = true;
+  $('#view-library').hidden = false;
+});
+
 // ---------- Ad Library: список брендов ----------
 let allBrands = [];
 const LOGO_COLORS = ['#d95f2b', '#2ea56f', '#3b6fd9', '#a259d9', '#d9a03b', '#d94f6f'];
@@ -38,6 +74,10 @@ function logoColor(name) {
   let sum = 0;
   for (const ch of name) sum += ch.charCodeAt(0);
   return LOGO_COLORS[sum % LOGO_COLORS.length];
+}
+
+function renderTagChips(tags) {
+  return (tags || []).map((t) => `<span class="tag-chip">${t}</span>`).join('');
 }
 
 async function loadBrands() {
@@ -89,7 +129,12 @@ function renderBrandsGrid() {
           <div class="brand-card__name">${b.name}</div>
           <div class="brand-card__category">${b.category || '—'}</div>
         </div>
+        <div class="brand-card__actions">
+          <button type="button" class="brand-card__action brand-card__action--edit" title="Редактировать">✎</button>
+          <button type="button" class="brand-card__action brand-card__action--danger" title="Удалить">✕</button>
+        </div>
       </div>
+      ${b.tags?.length ? `<div class="tag-chips">${renderTagChips(b.tags)}</div>` : ''}
       <div class="brand-card__stats">
         <span class="brand-card__count">
           <span class="brand-card__dot ${active > 0 ? 'is-active' : ''}"></span>
@@ -99,6 +144,8 @@ function renderBrandsGrid() {
       </div>
     `;
     card.addEventListener('click', () => openBrand(b));
+    $('.brand-card__action--edit', card).addEventListener('click', (e) => { e.stopPropagation(); openEditBrandDialog(b); });
+    $('.brand-card__action--danger', card).addEventListener('click', (e) => { e.stopPropagation(); deleteBrand(b); });
     grid.appendChild(card);
   }
 }
@@ -136,25 +183,73 @@ async function loadScaling() {
     </tr>`).join('') : '<tr><td colspan="7" class="empty-note">Пока нет активных креативов с дублями — собери снепшоты по брендам.</td></tr>';
 }
 
-$('#add-brand-btn').addEventListener('click', () => $('#add-brand-dialog').showModal());
 $all('[data-close]').forEach((b) => b.addEventListener('click', (e) => e.target.closest('dialog').close()));
+
+// Одна и та же модалка используется и для создания, и для редактирования —
+// editingBrandId === null значит "создаём новый".
+let editingBrandId = null;
+let brandTagEditor = null;
+
+function openAddBrandDialog() {
+  editingBrandId = null;
+  $('#add-brand-title').textContent = 'Новый бренд';
+  $('#add-brand-submit').textContent = 'Создать';
+  $('#new-brand-name').value = '';
+  $('#new-brand-category').value = '';
+  brandTagEditor = initTagEditor($('#brand-tags-chips'), $('#brand-tags-input'), []);
+  $('#add-brand-dialog').showModal();
+}
+
+function openEditBrandDialog(brand) {
+  editingBrandId = brand.id;
+  $('#add-brand-title').textContent = 'Редактировать бренд';
+  $('#add-brand-submit').textContent = 'Сохранить';
+  $('#new-brand-name').value = brand.name;
+  $('#new-brand-category').value = brand.category || '';
+  brandTagEditor = initTagEditor($('#brand-tags-chips'), $('#brand-tags-input'), brand.tags || []);
+  $('#add-brand-dialog').showModal();
+}
+
+async function deleteBrand(brand) {
+  if (!confirm(`Удалить бренд "${brand.name}" вместе со всеми его страницами и собранными объявлениями? Это необратимо.`)) return false;
+  await fetch(`/api/brands/${brand.id}`, { method: 'DELETE' });
+  loadBrands();
+  return true;
+}
+
+$('#add-brand-btn').addEventListener('click', openAddBrandDialog);
 
 $('#add-brand-form').addEventListener('submit', async (e) => {
   const name = $('#new-brand-name').value.trim();
   const category = $('#new-brand-category').value.trim();
+  const tags = brandTagEditor.getTags();
   if (!name) return;
-  await fetch('/api/brands', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ name, category })
-  });
-  $('#new-brand-name').value = '';
-  $('#new-brand-category').value = '';
+  if (editingBrandId) {
+    const updated = await fetch(`/api/brands/${editingBrandId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, category, tags })
+    }).then((r) => r.json());
+    // Если редактировали бренд, чья карточка сейчас открыта — обновляем и её,
+    // а не только список брендов на предыдущем экране.
+    if (currentBrandId === editingBrandId) {
+      currentBrand = { ...currentBrand, ...updated };
+      $('#brand-title').textContent = currentBrand.name;
+      $('#brand-sub').textContent = currentBrand.category || '';
+      $('#brand-tags-view').innerHTML = renderTagChips(currentBrand.tags);
+    }
+  } else {
+    await fetch('/api/brands', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, category, tags })
+    });
+  }
   loadBrands();
 });
 
 // ---------- Карточка бренда ----------
 async function openBrand(brand) {
   currentBrandId = brand.id;
+  currentBrand = brand;
   currentPages = brand.pages;
   adsPageFilter = 'all';
   adsSort = 'lastSeen';
@@ -164,6 +259,7 @@ async function openBrand(brand) {
   $('#view-brand').hidden = false;
   $('#brand-title').textContent = brand.name;
   $('#brand-sub').textContent = brand.category || '';
+  $('#brand-tags-view').innerHTML = renderTagChips(brand.tags);
   $('#brand-stats-overview').textContent = brand.stats
     ? `Всего по всем аккаунтам: ${brand.stats.active} активных из ${brand.stats.total} креативов`
     : '';
@@ -291,17 +387,19 @@ $('#metrics-period').addEventListener('change', (e) => {
   renderMetrics();
 });
 
-const FORMAT_COLORS = { image: '#d95f2b', video: '#2ea56f', unknown: '#c9c9c4' };
+const FORMAT_COLORS = { image: '#d95f2b', video: '#2ea56f', unknown: '#c9c9c4', removed: '#8d8d86' };
+const FORMAT_LABELS = { removed: 'аккаунт отключён' };
 
 function renderFormatBar(formatCount) {
-  const order = ['image', 'video', 'unknown'];
+  const order = ['image', 'video', 'unknown', 'removed'];
   const total = order.reduce((s, k) => s + (formatCount[k] || 0), 0) || 1;
   $('#format-stacked-bar').innerHTML = order
     .filter((k) => formatCount[k])
     .map((k) => `<span class="stacked-bar__seg" style="width:${(formatCount[k] / total) * 100}%;background:${FORMAT_COLORS[k]}"></span>`)
     .join('');
   $('#format-legend').innerHTML = order
-    .map((k) => `<span><span class="stacked-bar__dot" style="background:${FORMAT_COLORS[k]}"></span>${k} ${Math.round((formatCount[k] || 0) / total * 100)}%</span>`)
+    .filter((k) => formatCount[k])
+    .map((k) => `<span><span class="stacked-bar__dot" style="background:${FORMAT_COLORS[k]}"></span>${FORMAT_LABELS[k] || k} ${Math.round((formatCount[k] || 0) / total * 100)}%</span>`)
     .join('');
 }
 
@@ -494,11 +592,11 @@ function applyAdsFilters() {
     card.className = 'card';
     card.innerHTML = `
       <header class="card__header">
-        <span>${ad.format}</span>
+        <span>${ad.format === 'removed' ? 'аккаунт отключён' : ad.format}</span>
         <span class="card__status ${ad.is_active ? 'card__status--active' : 'card__status--inactive'}">${ad.is_active ? 'active' : 'inactive'}</span>
       </header>
       ${page ? `<div class="card__page-name">${page.page_name || page.page_id}</div>` : ''}
-      <div class="card__preview">${ad.thumbnail_url ? `<img class="card__thumb" src="${ad.thumbnail_url}" />` : 'нет превью'}</div>
+      <div class="card__preview">${ad.thumbnail_url ? `<img class="card__thumb" src="${ad.thumbnail_url}" />` : (ad.format === 'removed' ? 'превью недоступно — Meta отключила аккаунт/страницу за нарушение рекламных стандартов' : 'нет превью')}</div>
       <p class="card__body">${(ad.creative_body || '').slice(0, 100)}</p>
       <dl class="card__meta">
         <div>${ad.activityDays ?? '—'} дн.</div>
@@ -546,8 +644,11 @@ function formatDate(d) {
   return new Date(d).toLocaleDateString('ru-RU');
 }
 
+let currentJobs = [];
+
 async function renderJobs() {
   const jobs = await fetch('/api/jobs').then((r) => r.json());
+  currentJobs = jobs;
   const list = $('#jobs-list');
   if (!jobs.length) { list.innerHTML = '<p class="empty-note">Ad Page ещё не добавлены ни в одном бренде.</p>'; return; }
 
@@ -567,6 +668,7 @@ async function renderJobs() {
     const dataHtml = j.existingCount
       ? `<div class="job-row__data">В базе: ${j.existingCount} объявлений (посл. сбор ${formatDate(j.lastFetchDate)})</div>`
       : '<div class="job-row__data job-row__data--empty">В базе пока нет объявлений по этой странице</div>';
+    const tagsHtml = j.tags?.length ? `<div class="job-row__tags tag-chips">${renderTagChips(j.tags)}</div>` : '';
 
     const buttonHtml = j.status === 'running'
       ? ''
@@ -578,10 +680,12 @@ async function renderJobs() {
           <div class="job-row__brand">${j.brandName}</div>
           <div class="job-row__page">${j.pageName}</div>
           ${dataHtml}
+          ${tagsHtml}
         </div>
         <div class="job-row__right">
           ${statusHtml}
           ${buttonHtml}
+          <button type="button" class="btn btn--small job-row__edit" data-page-id="${j.pageId}">✎ Изменить</button>
           <button type="button" class="btn btn--small btn--danger job-row__delete" data-page-id="${j.pageId}">✕ Удалить</button>
         </div>
       </div>`;
@@ -604,7 +708,33 @@ $('#jobs-list').addEventListener('click', async (e) => {
     deleteBtn.disabled = true;
     await fetch(`/api/pages/${deleteBtn.dataset.pageId}`, { method: 'DELETE' });
     renderJobs();
+    return;
   }
+  const editBtn = e.target.closest('.job-row__edit');
+  if (editBtn) {
+    const job = currentJobs.find((j) => String(j.pageId) === editBtn.dataset.pageId);
+    if (job) openEditPageDialog(job);
+  }
+});
+
+let editingPageId = null;
+let pageTagEditor = null;
+
+function openEditPageDialog(job) {
+  editingPageId = job.pageId;
+  $('#edit-page-name').value = job.pageName || '';
+  pageTagEditor = initTagEditor($('#page-tags-chips'), $('#page-tags-input'), job.tags || []);
+  $('#edit-page-dialog').showModal();
+}
+
+$('#edit-page-form').addEventListener('submit', async (e) => {
+  const page_name = $('#edit-page-name').value.trim();
+  const tags = pageTagEditor.getTags();
+  await fetch(`/api/pages/${editingPageId}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ page_name, tags })
+  });
+  renderJobs();
 });
 
 // ---------- Аналитика: перформанс своих рекламных кабинетов ----------

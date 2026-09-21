@@ -112,6 +112,10 @@ async function migrate() {
   // добавлены позже, поэтому для существующих баз это миграция.
   try { await client.execute('ALTER TABLE ad_snapshots ADD COLUMN reach_breakdown TEXT'); } catch { /* колонка уже есть */ }
   try { await client.execute('ALTER TABLE ad_snapshots ADD COLUMN link_caption TEXT'); } catch { /* колонка уже есть */ }
+  // Теги — JSON-массив строк. Не выносим в отдельную таблицу: тегов на бренд/
+  // страницу мало, а отдельная many-to-many таблица для этого объёма избыточна.
+  try { await client.execute("ALTER TABLE brands ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'"); } catch { /* колонка уже есть */ }
+  try { await client.execute("ALTER TABLE ad_pages ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'"); } catch { /* колонка уже есть */ }
 }
 
 const ready = migrate();

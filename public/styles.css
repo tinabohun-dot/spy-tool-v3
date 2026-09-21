@@ -210,7 +210,37 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
 .brand-card__dot.is-active { background: var(--active); }
 .brand-card__platform { color: #1877f2; font-size: 18px; }
 
+.brand-card__actions { display: flex; gap: 6px; margin-left: auto; flex: none; }
+.brand-card__action {
+  border: 1px solid var(--line); background: #fff; border-radius: 8px; width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 13px; color: var(--muted);
+}
+.brand-card__action:hover { border-color: var(--accent); color: var(--accent); }
+.brand-card__action--danger:hover { border-color: var(--inactive); color: var(--inactive); }
+
 .empty-note { grid-column: 1 / -1; }
+
+/* ===== Теги ===== */
+.tag-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.tag-chip {
+  display: inline-flex; align-items: center; gap: 5px; background: var(--accent-soft); color: var(--accent);
+  border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600;
+}
+.tag-editor {
+  border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: flex; flex-direction: column; gap: 6px;
+}
+.tag-editor__chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag-editor__chips:empty { display: none; }
+.tag-editor__chip {
+  display: inline-flex; align-items: center; gap: 5px; background: var(--accent-soft); color: var(--accent);
+  border-radius: 999px; padding: 3px 6px 3px 10px; font-size: 12px; font-weight: 600;
+}
+.tag-editor__chip button {
+  border: none; background: none; color: inherit; cursor: pointer; font-size: 12px; line-height: 1; padding: 2px;
+}
+.tag-editor__input { border: none; outline: none; font-size: 13px; font-family: inherit; padding: 4px 2px; }
+
+.view__header-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 .jobs-list { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; }
 .job-row {
@@ -220,6 +250,7 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
 .job-row__brand { font-weight: 600; font-size: 14px; }
 .job-row__page { color: var(--muted); font-size: 13px; }
 .job-row__data { font-size: 12px; color: var(--muted); margin-top: 4px; }
+.job-row__tags { margin-top: 4px; }
 .job-row__data--empty { color: var(--inactive); }
 .job-row__right { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .job-row__refresh { flex: none; }

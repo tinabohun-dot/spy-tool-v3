@@ -86,20 +86,45 @@ app.get('/api/brands', async (req, res) => {
   res.json(
     await Promise.all(brands.map(async (b) => ({
       ...b,
-      pages: pages.filter((p) => p.brand_id === b.id),
+      tags: JSON.parse(b.tags || '[]'),
+      pages: pages.filter((p) => p.brand_id === b.id).map((p) => ({ ...p, tags: JSON.parse(p.tags || '[]') })),
       stats: await analytics.libraryStats(b.id)
     })))
   );
 });
 
+function withParsedTags(row) { return row && { ...row, tags: JSON.parse(row.tags || '[]') }; }
+
 app.post('/api/brands', async (req, res) => {
-  const { name, category } = req.body;
+  const { name, category, tags } = req.body;
   if (!name) return res.status(400).json({ error: 'Нужно имя бренда' });
-  const info = await db.prepare('INSERT INTO brands (name, category) VALUES (?, ?)').run(name, category || null);
-  res.json(await db.prepare('SELECT * FROM brands WHERE id = ?').get(info.lastInsertRowid));
+  const info = await db.prepare('INSERT INTO brands (name, category, tags) VALUES (?, ?, ?)')
+    .run(name, category || null, JSON.stringify(tags || []));
+  res.json(withParsedTags(await db.prepare('SELECT * FROM brands WHERE id = ?').get(info.lastInsertRowid)));
 });
 
+app.patch('/api/brands/:id', async (req, res) => {
+  const existing = await db.prepare('SELECT * FROM brands WHERE id = ?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Бренд не найден' });
+  const name = req.body.name !== undefined ? req.body.name.trim() : existing.name;
+  const category = req.body.category !== undefined ? (req.body.category.trim() || null) : existing.category;
+  const tags = req.body.tags !== undefined ? JSON.stringify(req.body.tags) : existing.tags;
+  if (!name) return res.status(400).json({ error: 'Нужно имя бренда' });
+  await db.prepare('UPDATE brands SET name = ?, category = ?, tags = ? WHERE id = ?').run(name, category, tags, req.params.id);
+  res.json(withParsedTags(await db.prepare('SELECT * FROM brands WHERE id = ?').get(req.params.id)));
+});
+
+// Внешние ключи в SQLite/Turso не проверяются, пока не включишь PRAGMA
+// foreign_keys (см. комментарий у DELETE /api/pages/:id ниже) — ON DELETE
+// CASCADE в схеме сам по себе не срабатывает, поэтому чистим зависимые
+// таблицы явно по каждой странице бренда, а не полагаемся на каскад.
 app.delete('/api/brands/:id', async (req, res) => {
+  const pages = await db.prepare('SELECT id FROM ad_pages WHERE brand_id = ?').all(req.params.id);
+  for (const p of pages) {
+    await db.prepare('DELETE FROM rank_history WHERE ad_page_id = ?').run(p.id);
+    await db.prepare('DELETE FROM ad_snapshots WHERE ad_page_id = ?').run(p.id);
+  }
+  await db.prepare('DELETE FROM ad_pages WHERE brand_id = ?').run(req.params.id);
   await db.prepare('DELETE FROM brands WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
@@ -122,11 +147,20 @@ app.post('/api/brands/:brandId/pages', async (req, res) => {
       .run(req.params.brandId, platform, pageId, page_name || null);
     const adPage = await db.prepare('SELECT * FROM ad_pages WHERE platform = ? AND page_id = ?').get(platform, pageId);
     fetchSnapshotForAdPage(adPage).catch((e) => console.error('Первичный сбор снепшота не удался:', e.message));
-    res.json(adPage);
+    res.json(withParsedTags(adPage));
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: err.message });
   }
+});
+
+app.patch('/api/pages/:id', async (req, res) => {
+  const existing = await db.prepare('SELECT * FROM ad_pages WHERE id = ?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Страница не найдена' });
+  const page_name = req.body.page_name !== undefined ? (req.body.page_name.trim() || null) : existing.page_name;
+  const tags = req.body.tags !== undefined ? JSON.stringify(req.body.tags) : existing.tags;
+  await db.prepare('UPDATE ad_pages SET page_name = ?, tags = ? WHERE id = ?').run(page_name, tags, req.params.id);
+  res.json(withParsedTags(await db.prepare('SELECT * FROM ad_pages WHERE id = ?').get(req.params.id)));
 });
 
 // ON DELETE CASCADE в схеме не срабатывает — SQLite/Turso не проверяют внешние
@@ -166,7 +200,7 @@ app.get('/api/brands/:brandId/ads', async (req, res) => res.json(await analytics
 // нет данных" это или "ещё собирается".
 app.get('/api/jobs', async (req, res) => {
   const pages = await db.prepare(`
-    SELECT ad_pages.id, ad_pages.page_name, ad_pages.page_id, ad_pages.brand_id, brands.name as brand_name
+    SELECT ad_pages.id, ad_pages.page_name, ad_pages.page_id, ad_pages.brand_id, ad_pages.tags, brands.name as brand_name
     FROM ad_pages JOIN brands ON brands.id = ad_pages.brand_id
   `).all();
   const snapshotCounts = await db.prepare(`
@@ -175,15 +209,24 @@ app.get('/api/jobs', async (req, res) => {
   `).all();
   const dataByPageId = Object.fromEntries(snapshotCounts.map((r) => [r.ad_page_id, r]));
   const jobsByPageId = Object.fromEntries(jobStatus.listJobs().map((j) => [j.pageId, j]));
-  res.json(pages.map((p) => ({
-    pageId: p.id,
-    pageName: p.page_name || p.page_id,
-    brandId: p.brand_id,
-    brandName: p.brand_name,
-    existingCount: dataByPageId[p.id]?.existingCount || 0,
-    lastFetchDate: dataByPageId[p.id]?.lastFetchDate || null,
-    ...(jobsByPageId[p.id] || { status: 'idle', startedAt: null, finishedAt: null, total: null, processed: 0, error: null })
-  })));
+  res.json(pages.map((p) => {
+    // jobStatus хранит pageName/brandId как снимок на момент старта задачи —
+    // если страницу переименовали после этого, in-memory снимок устареет
+    // раньше, чем DB. Поэтому берём статус задачи, но имя/бренд — всегда
+    // свежие из БД (деструктурируем, чтобы явно отбросить их из снимка).
+    const { pageName: _staleName, brandId: _staleBrandId, ...jobFields } = jobsByPageId[p.id]
+      || { status: 'idle', startedAt: null, finishedAt: null, total: null, processed: 0, error: null };
+    return {
+      pageId: p.id,
+      pageName: p.page_name || p.page_id,
+      brandId: p.brand_id,
+      brandName: p.brand_name,
+      tags: JSON.parse(p.tags || '[]'),
+      existingCount: dataByPageId[p.id]?.existingCount || 0,
+      lastFetchDate: dataByPageId[p.id]?.lastFetchDate || null,
+      ...jobFields
+    };
+  }));
 });
 
 // Аналитика по собственным рекламным кабинетам (Marketing API): расход,

@@ -71,8 +71,13 @@
     <section id="view-brand" class="view" hidden>
       <button id="back-to-library" class="btn btn--ghost">← Ad Library</button>
       <div class="view__header">
-        <h1 id="brand-title">—</h1>
+        <div class="view__header-row">
+          <h1 id="brand-title">—</h1>
+          <button id="edit-brand-btn" class="btn btn--small">✎ Редактировать</button>
+          <button id="delete-brand-btn" class="btn btn--small btn--danger">✕ Удалить бренд</button>
+        </div>
         <p id="brand-sub" class="view__sub"></p>
+        <div id="brand-tags-view" class="tag-chips"></div>
         <p id="brand-stats-overview" class="view__sub view__sub--stats"></p>
       </div>
 
@@ -545,15 +550,22 @@
   </main>
 </div>
 
-<!-- Модалка добавления бренда -->
+<!-- Модалка добавления/редактирования бренда -->
 <dialog id="add-brand-dialog">
   <form id="add-brand-form" method="dialog">
-    <h3>Новый бренд</h3>
+    <h3 id="add-brand-title">Новый бренд</h3>
     <label class="field"><span class="field__label">Название</span><input id="new-brand-name" required /></label>
     <label class="field"><span class="field__label">Категория (необязательно)</span><input id="new-brand-category" /></label>
+    <label class="field">
+      <span class="field__label">Теги</span>
+      <div id="brand-tags-editor" class="tag-editor">
+        <div id="brand-tags-chips" class="tag-editor__chips"></div>
+        <input id="brand-tags-input" class="tag-editor__input" placeholder="Тег + Enter" />
+      </div>
+    </label>
     <div class="dialog-actions">
       <button type="button" class="btn btn--ghost" data-close>Отмена</button>
-      <button type="submit" class="btn btn--primary">Создать</button>
+      <button type="submit" id="add-brand-submit" class="btn btn--primary">Создать</button>
     </div>
   </form>
 </dialog>
@@ -568,6 +580,25 @@
     <div class="dialog-actions">
       <button type="button" class="btn btn--ghost" data-close>Отмена</button>
       <button type="submit" class="btn btn--primary">Добавить и собрать данные</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- Модалка редактирования Ad Page -->
+<dialog id="edit-page-dialog">
+  <form id="edit-page-form" method="dialog">
+    <h3>Редактировать Ad Page</h3>
+    <label class="field"><span class="field__label">Название страницы</span><input id="edit-page-name" /></label>
+    <label class="field">
+      <span class="field__label">Теги</span>
+      <div id="page-tags-editor" class="tag-editor">
+        <div id="page-tags-chips" class="tag-editor__chips"></div>
+        <input id="page-tags-input" class="tag-editor__input" placeholder="Тег + Enter" />
+      </div>
+    </label>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn--ghost" data-close>Отмена</button>
+      <button type="submit" class="btn btn--primary">Сохранить</button>
     </div>
   </form>
 </dialog>
