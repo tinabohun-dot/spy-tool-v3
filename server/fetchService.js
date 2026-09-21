@@ -7,6 +7,17 @@ const jobStatus = require('./jobStatus');
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 function hashText(text) { return crypto.createHash('md5').update((text || '').trim().toLowerCase()).digest('hex'); }
 
+// Meta сама возвращает этот текст вместо текста объявления в ad_creative_bodies,
+// когда аккаунт/страница, разместившие рекламу, позже были отключены за нарушение
+// рекламных стандартов — превью для такой рекламы не существует нигде, включая сам
+// facebook.com/ads/library. Раньше мы всё равно гоняли такие объявления через
+// headless-браузер (впустую тратя единственный слот MAX_CONCURRENT на бесплатном
+// Render) и получали 'unknown', неотличимое от настоящего сбоя скрапера.
+const DISABLED_NOTICE_RE = /disabled for not following our advertising standards/i;
+function isDisabledAccountNotice(body) {
+  return DISABLED_NOTICE_RE.test(body || '');
+}
+
 async function fetchSnapshotForAdPage(adPage, days = 7) {
   jobStatus.startJob(adPage);
   try {
@@ -76,7 +87,11 @@ async function runFetch(adPage, days = 7) {
   // креативы не терялись.
   const rows = await Promise.all(ads.map(async (ad) => {
     const body = (ad.ad_creative_bodies || [])[0] || ad.ad_creative_link_titles?.[0] || '';
-    const { format, thumbnail } = priorGoodByAdId[ad.id] || await inspectSnapshot(ad.ad_snapshot_url);
+    const { format, thumbnail } = priorGoodByAdId[ad.id] || (
+      isDisabledAccountNotice(body)
+        ? { format: 'removed', thumbnail: null }
+        : await inspectSnapshot(ad.ad_snapshot_url)
+    );
     const isActive = !ad.ad_delivery_stop_time || new Date(ad.ad_delivery_stop_time) > new Date();
     const row = {
       ad_page_id: adPage.id, ad_id: ad.id, creative_body: body,
