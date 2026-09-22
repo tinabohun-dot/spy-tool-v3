@@ -55,7 +55,13 @@ function buildAccountBreakdown(creative, allRows) {
   });
 }
 
-async function postCreativeAlert(c, direction = 'up') {
+// Заголовок раньше был "поднялся/упал по грейду" — имело смысл, пока это
+// слал автоматический детектор изменений. Теперь это разовый ручной снимок
+// без сравнения с прошлым разом, поэтому заголовок не должен утверждать, что
+// что-то изменилось: иначе один и тот же креатив, остающийся в Promising+
+// неделями, при каждой ручной отправке выглядит так, будто он только что
+// "поднялся" — хотя на самом деле просто снова попал в выбранный период.
+async function postCreativeAlert(c) {
   const emoji = GRADE_EMOJI[c.grade] || '⚪';
   const driveUrl = await googleDrive.findFileLinkByName(c.name);
   const lines = [
@@ -70,13 +76,10 @@ async function postCreativeAlert(c, direction = 'up') {
       lines.push(`   • ${b.account}: ${b.purchases} purchases${b.cpa ? ' · CPA $' + b.cpa.toFixed(2) : ''}`);
     }
   }
-  const title = direction === 'down'
-    ? `📉 Креатив упал по грейду: ${c.name}`
-    : `🚀 Креатив поднялся по грейду: ${c.name}`;
   await postToSlack({
     attachments: [{
       color: GRADE_COLORS[c.grade] || '#999999',
-      title,
+      title: `⭐ Топ-креатив: ${c.name}`,
       ...(driveUrl ? { title_link: driveUrl } : {}),
       text: lines.join('\n'),
       ...(c.previewUrl ? { image_url: c.previewUrl } : {})
