@@ -1,21 +1,11 @@
-// Ежедневная проверка — появились ли среди своих креативов (Аналитика,
-// metaMarketing) новые с грейдом Promising и выше за последние 7 дней
-// (скользящее окно, конец окна — вчера), а также упал ли кто-то из ранее
-// топовых креативов ниже Promising (в Bad/No purchases).
-// Запускается не по расписанию, а первым визитом на сайт после 10:00 по
-// Варшаве (см. maybeRunMorningTopCreoCheck в index.js) — на бесплатном
-// Render процесс спит без запросов, и cron на точное время мог просто не
-// сработать. Каждый поднявшийся по грейду креатив шлём в Slack один раз —
-// ключ (название) сохраняем в notified_top_creatives, чтобы не дублировать
-// уведомление на следующих проверках.
-const db = require('./db');
+// Отправка топ-креативов (Promising+) в Slack — только по ручной кнопке
+// "Отправить в Slack" на вкладке TOPS (см. sendTopCreativesForRange), период
+// выбирает сама Тина. Автоматической ежедневной проверки больше нет —
+// раньше она сама решала, когда что-то изменилось по грейду, и слала
+// уведомление первым визитом на сайт после 10:00 по Варшаве; теперь Тина
+// сама решает, когда и за какой период слать.
 const metaMarketing = require('./metaMarketing');
 const googleDrive = require('./googleDrive');
-
-function warsawDateString(daysAgo = 0) {
-  const now = new Date(Date.now() - daysAgo * 86400000);
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Warsaw' }).format(now);
-}
 
 // Те же цвета, что и у бейджа грейда в самом приложении (GRADE_BADGE_COLORS
 // в app.js) — используются как цветная полоса слева у сообщения в Slack.
@@ -94,93 +84,9 @@ async function postCreativeAlert(c, direction = 'up') {
   });
 }
 
-// Тот же порядок грейдов, что и в сортировке аналитики на фронте — уведомляем
-// только когда креатив поднялся ВЫШЕ по грейду, чем в прошлый раз, когда мы
-// его видели (или раньше вообще не был в Promising+). Если держится на том
-// же грейде или просел ниже — молчим (падение из Promising+ в Bad/No purchases
-// ловит отдельно isGradeDowngrade).
-const GRADE_RANK = { 'Alpha': 5, 'Scale': 4, 'Test': 3, 'Promising': 2, 'Bad': 1, 'No purchases': 0 };
-
-async function lastKnownGrade(key) {
-  const row = await db.prepare('SELECT grade FROM notified_top_creatives WHERE creative_key = ?').get(key);
-  return row?.grade || null;
-}
-
-async function isGradeUpgrade(key, grade) {
-  const prevGrade = await lastKnownGrade(key);
-  if (!prevGrade) return true;
-  return (GRADE_RANK[grade] ?? -1) > (GRADE_RANK[prevGrade] ?? -1);
-}
-
-// Симметрично isGradeUpgrade: сообщаем о падении только если раньше уже
-// писали про этот креатив как про Promising+ (иначе не о чем — он никогда и
-// не был в топе), а сейчас он выпал из Promising+ совсем (в Bad/No purchases).
-// Просадка внутри самого топа (напр. Alpha -> Test) не считается — молчим, как
-// и раньше.
-async function isGradeDowngrade(key, grade) {
-  const prevGrade = await lastKnownGrade(key);
-  if (!prevGrade) return false;
-  const promisingRank = GRADE_RANK['Promising'];
-  return (GRADE_RANK[prevGrade] ?? -1) >= promisingRank && (GRADE_RANK[grade] ?? -1) < promisingRank;
-}
-
-async function markNotified(key, grade) {
-  await db.prepare(`
-    INSERT INTO notified_top_creatives (creative_key, grade, notified_at) VALUES (?, ?, ?)
-    ON CONFLICT(creative_key) DO UPDATE SET grade = excluded.grade, notified_at = excluded.notified_at
-  `).run(key, grade, new Date().toISOString());
-}
-
-async function checkNewTopCreatives() {
-  const accNames = Object.keys(metaMarketing.accounts());
-  if (!accNames.length) { console.warn('[slack-alert] META_MARKETING_ACCOUNTS не задан — пропускаю проверку'); return; }
-
-  // Скользящее окно 7 дней, конец — вчера: каждый день since/until сдвигаются
-  // на сутки вперёд (grade считается по суммарным purchases/CPA за неделю,
-  // а не за один день — иначе разовый провал/всплеск за сутки слишком сильно
-  // шатал грейд).
-  const since = warsawDateString(7);
-  const until = warsawDateString(1);
-  const allRows = await metaMarketing.fetchAllAccountsInsights(since, until);
-  const creatives = metaMarketing.groupRowsByCreative(allRows).map(metaMarketing.buildCreativeEntry);
-
-  const topCreatives = creatives.filter((c) => metaMarketing.SUCCESS_GRADES.includes(c.grade));
-  const upgradeFlags = await Promise.all(topCreatives.map((c) => isGradeUpgrade(c.name, c.grade)));
-  const upgraded = topCreatives.filter((_, i) => upgradeFlags[i]);
-  for (const c of upgraded) c.accountBreakdown = buildAccountBreakdown(c, allRows);
-  await metaMarketing.attachPreviews(upgraded);
-
-  // Падения — среди тех, кто СЕЙЧАС не Promising+, ищем тех, кто раньше был
-  // отмечен как Promising+ (см. isGradeDowngrade) — то есть реально выпал из
-  // топа, а не просто никогда там не был.
-  const belowCreatives = creatives.filter((c) => !metaMarketing.SUCCESS_GRADES.includes(c.grade));
-  const downgradeFlags = await Promise.all(belowCreatives.map((c) => isGradeDowngrade(c.name, c.grade)));
-  const downgraded = belowCreatives.filter((_, i) => downgradeFlags[i]);
-  for (const c of downgraded) c.accountBreakdown = buildAccountBreakdown(c, allRows);
-  await metaMarketing.attachPreviews(downgraded);
-
-  console.log(`[slack-alert] ${since}..${until}: ${topCreatives.length} креативов Promising+, ${upgraded.length} поднялись по грейду, ${downgraded.length} упали по грейду`);
-
-  if (!upgraded.length && !downgraded.length) {
-    await postToSlack({ text: `За ${since}–${until} нет изменений по грейду.` });
-    return;
-  }
-
-  for (const c of downgraded) {
-    await postCreativeAlert(c, 'down');
-    await markNotified(c.name, c.grade);
-  }
-  for (const c of upgraded) {
-    await postCreativeAlert(c, 'up');
-    await markNotified(c.name, c.grade);
-  }
-}
-
 // Ручная рассылка по кнопке "Отправить в Slack" в TOPS — все текущие
 // топ-креативы (Promising+) за произвольный период, который выбирает сама
-// Тина (например, "закрытая неделя"), без проверки "уже писали или нет" —
-// это не автоматическое уведомление об изменениях, а разовый снимок по
-// запросу, поэтому не трогает notified_top_creatives.
+// Тина (например, "закрытая неделя").
 async function sendTopCreativesForRange(since, until) {
   const allRows = await metaMarketing.fetchAllAccountsInsights(since, until);
   const creatives = metaMarketing.groupRowsByCreative(allRows).map(metaMarketing.buildCreativeEntry);
@@ -195,4 +101,4 @@ async function sendTopCreativesForRange(since, until) {
   return topCreatives.length;
 }
 
-module.exports = { checkNewTopCreatives, sendTopCreativesForRange, warsawDateString };
+module.exports = { sendTopCreativesForRange };

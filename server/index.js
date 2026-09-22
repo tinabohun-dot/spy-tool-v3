@@ -11,7 +11,7 @@ const analytics = require('./analytics');
 const jobStatus = require('./jobStatus');
 const metaMarketing = require('./metaMarketing');
 const airtable = require('./airtable');
-const { checkNewTopCreatives, sendTopCreativesForRange, warsawDateString } = require('./slackAlerts');
+const { sendTopCreativesForRange } = require('./slackAlerts');
 const googleDrive = require('./googleDrive');
 
 const app = express();
@@ -19,62 +19,6 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
-
-// Бесплатный Render засыпает без входящих запросов, поэтому cron.schedule на
-// фиксированное время мог просто не наступить, пока процесс спал — и
-// уведомление в Slack не уходило вовсе (see: тишина в #top_creo). Вместо
-// расписания — триггерим проверку первым же запросом после 10:00 по Варшаве,
-// не чаще раза в день. Дата последнего запуска лежит в app_meta, чтобы
-// пережить рестарт/сон, а topCreoCheckRunning защищает от дублей, пока
-// сама проверка (обращения к Meta API) ещё выполняется. Важно: эта middleware
-// стоит ДО express.static — иначе для отданных статикой запросов (например,
-// самой главной страницы) next() не вызывался бы и проверка не запускалась.
-const TOP_CREO_CHECK_HOUR = 10; // по Варшаве — как раньше было в cron.schedule
-let topCreoCheckRunning = false;
-
-async function maybeRunMorningTopCreoCheck() {
-  if (topCreoCheckRunning) return;
-  // Всё тело — в одном try/catch: необработанный reject в async-функции,
-  // вызванной без await/.catch() (как ниже, в middleware), убивает весь
-  // процесс Node (поведение по умолчанию с Node 15+) — а не просто эту
-  // проверку. Один сетевой сбой при обращении к Turso на холодном старте
-  // контейнера уронил бы сервер прямо на первом запросе (health-check
-  // Render) и выглядел бы как зависший на ровном месте деплой.
-  try {
-    const warsawHour = +new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Warsaw', hour: 'numeric', hourCycle: 'h23' }).format(new Date());
-    if (warsawHour < TOP_CREO_CHECK_HOUR) return;
-
-    const today = warsawDateString(0);
-    // "Прочитать дату, потом записать" — не атомарно: два почти одновременных
-    // запроса (например, браузер параллельно бьёт на несколько эндпоинтов при
-    // загрузке страницы) оба могли проскочить SELECT ДО того, как первый из
-    // них успевал записать "сегодня уже сделано" — отсюда дубли уведомлений
-    // в Slack. UPDATE ... WHERE value != ? — атомарная операция на уровне
-    // БД: из нескольких одновременных попыток "забрать" сегодняшний день
-    // реально изменит строку только одна, остальные увидят changes = 0.
-    await db.prepare(`
-      INSERT INTO app_meta (key, value) VALUES ('last_top_creo_check_date', '')
-      ON CONFLICT(key) DO NOTHING
-    `).run();
-    const claim = await db.prepare(`
-      UPDATE app_meta SET value = ? WHERE key = 'last_top_creo_check_date' AND value != ?
-    `).run(today, today);
-    if (!claim.changes) return;
-
-    topCreoCheckRunning = true;
-    console.log('[top-creo] Утренняя проверка запущена первым визитом:', today);
-    await checkNewTopCreatives();
-  } catch (e) {
-    console.error('[top-creo] Ошибка утренней проверки:', e.message);
-  } finally {
-    topCreoCheckRunning = false;
-  }
-}
-
-app.use((req, res, next) => {
-  next();
-  maybeRunMorningTopCreoCheck().catch((e) => console.error('[top-creo] Необработанная ошибка:', e.message));
-});
 
 app.use(express.static(path.join(__dirname, '..', 'public')));
 
