@@ -334,6 +334,8 @@ function getFunnelFromCampaign(campaignName) {
   const text = campaignName.toLowerCase();
   if (/toddler-quiz/.test(text)) return 'Toddler';
   if (/brain-activation/.test(text)) return 'Brain Activation';
+  if (/sensory-kids?/.test(text)) return 'Sensory Kid';
+  if (/potty-training/.test(text)) return 'Potty Training';
   if (/general-kids/.test(text)) return 'General';
   if (/mix/.test(text)) return 'Mix';
   if (/yelling/.test(text)) return 'Stop Yelling';
