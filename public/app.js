@@ -933,7 +933,7 @@ function renderAnalyticsRow(c) {
   const rowClass = 'grade-row--' + c.grade.replace(/\s+/g, '-');
   return `
     <tr class="${rowClass}">
-      <td>${c.previewUrl ? `<img class="thumb" src="${c.previewUrl}" />` : ''}</td>
+      <td>${c.previewUrl ? `<img class="thumb" src="${c.previewUrl}" data-ad-id="${c.adId}" data-ad-name="${c.name}" title="Кликни, чтобы посмотреть живое превью" />` : ''}</td>
       <td class="analytics-table__name" title="${c.name}">${c.name}</td>
       <td>${c.type}</td>
       <td><span class="grade-badge" style="background:${badge.bg};color:${badge.color}">${c.grade}</span></td>
@@ -967,6 +967,31 @@ function renderAnalyticsRow(c) {
       <td>${c.campaignName}</td>
       <td>${renderStatusBadge(c)}</td>
     </tr>`;
+}
+
+// Клик по превьюшке — открыть живой рендер объявления с воспроизведением
+// видео (как в самом Ads Manager), а не только статичную картинку
+// thumbnail_url, которая и так уже в таблице.
+async function openAdPreview(adId, adName) {
+  $('#ad-preview-title').textContent = adName || '';
+  $('#ad-preview-content').innerHTML = 'Загружаю превью...';
+  $('#ad-preview-dialog').showModal();
+  try {
+    const resp = await fetch(`/api/marketing/ad-preview/${adId}`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Ошибка запроса');
+    $('#ad-preview-content').innerHTML = data.html;
+  } catch (err) {
+    $('#ad-preview-content').innerHTML = 'Не удалось загрузить превью: ' + err.message;
+  }
+}
+
+for (const tbodyId of ['#analytics-tbody', '#tops-tbody']) {
+  $(tbodyId).addEventListener('click', (e) => {
+    const img = e.target.closest('.thumb[data-ad-id]');
+    if (!img) return;
+    openAdPreview(img.dataset.adId, img.dataset.adName);
+  });
 }
 
 const GRADE_RANK = { 'Alpha': 5, 'Scale': 4, 'Test': 3, 'Promising': 2, 'Bad': 1, 'No purchases': 0 };

@@ -158,6 +158,18 @@ dialog { border: none; border-radius: 14px; padding: 24px; width: 380px; box-sha
 dialog::backdrop { background: rgba(0,0,0,.3); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
+.ad-preview-dialog { width: 520px; max-width: 90vw; padding: 16px; }
+.ad-preview-dialog__header {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px;
+  font-size: 13px; color: var(--muted); word-break: break-all;
+}
+.ad-preview-dialog__content {
+  min-height: 300px; display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 13px;
+}
+.ad-preview-dialog__content iframe { width: 100%; min-height: 500px; border: none; }
+.thumb { cursor: pointer; }
+
 /* ===== Ad Library (визуал в духе Spiral) ===== */
 .library-top { display: flex; flex-direction: column; gap: 16px; margin-bottom: 18px; }
 .library-top h1 { font-size: 32px; }

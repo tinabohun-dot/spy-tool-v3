@@ -132,6 +132,19 @@ app.post('/api/brands/:brandId/refresh', async (req, res) => {
   res.json({ results });
 });
 
+// Живое превью объявления (с воспроизведением видео) по клику на превьюшку
+// в Аналитике — то же, что видно в самом Ads Manager, а не статичная
+// картинка thumbnail_url, которая уже есть в таблице.
+app.get('/api/marketing/ad-preview/:adId', async (req, res) => {
+  try {
+    const html = await metaMarketing.fetchAdPreview(req.params.adId, req.query.format);
+    if (!html) return res.status(404).json({ error: 'Meta не вернула превью для этого объявления и формата' });
+    res.json({ html });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/brands/:brandId/metrics', async (req, res) => res.json(await analytics.metrics(req.params.brandId, +req.query.days || 7)));
 app.get('/api/brands/:brandId/eu-reach', async (req, res) => res.json(await analytics.euReach(req.params.brandId)));
 app.get('/api/brands/:brandId/trending', async (req, res) => res.json(await analytics.trending(req.params.brandId)));

@@ -457,6 +457,30 @@ async function fetchAdInfo(adId) {
   return info;
 }
 
+// "Живое" превью объявления — тот же рендер (с воспроизведением видео),
+// что и в самом Ads Manager, а не статичная картинка thumbnail_url. Meta
+// отдаёт его как готовый <iframe> (поле body) под конкретный формат
+// плейсмента — если запрошенный формат объявлению не подходит (например,
+// оно никогда не показывалось в этом плейсменте), API отвечает пустым
+// data[], поэтому пробуем ещё один распространённый формат перед тем как
+// сдаться.
+const AD_PREVIEW_FORMATS = ['MOBILE_FEED_STANDARD', 'DESKTOP_FEED_STANDARD'];
+
+async function fetchAdPreview(adId, adFormat) {
+  const formats = adFormat ? [adFormat] : AD_PREVIEW_FORMATS;
+  for (const format of formats) {
+    const url = new URL(`https://graph.facebook.com/${API_VERSION}/${adId}/previews`);
+    url.searchParams.set('ad_format', format);
+    url.searchParams.set('access_token', token());
+    const resp = await fetch(url.toString());
+    const json = await resp.json();
+    if (json.error) throw new Error(json.error.message);
+    const html = json?.data?.[0]?.body;
+    if (html) return html;
+  }
+  return null;
+}
+
 async function mapConcurrent(items, limit, fn) {
   const out = new Array(items.length);
   let i = 0;
@@ -485,5 +509,6 @@ module.exports = {
   fetchAllAccountsInsightsBreakdown,
   groupRowsByCreative, buildCreativeEntry, summarize, attachPreviews,
   fetchLaunchedTaskNumbers, fetchPlatformBreakdown, fetchDemographics,
+  fetchAdPreview,
   SUCCESS_GRADES
 };
