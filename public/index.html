@@ -213,6 +213,7 @@
           <button type="button" class="segmented__btn" data-days="7">7 дней</button>
           <button type="button" class="segmented__btn" data-days="14">14 дней</button>
           <button type="button" class="segmented__btn" data-days="30">30 дней</button>
+          <button type="button" class="segmented__btn" id="analytics-closed-week-btn">Закрытая неделя</button>
         </div>
         <label class="field">
           <span class="field__label">С</span>
@@ -312,6 +313,10 @@
 
       <div id="subtab-tops" class="tab-panel">
         <p class="hint">Только креативы с грейдом Promising и выше (Bad и No purchases сюда не входят).</p>
+        <div class="tops-slack-row">
+          <button type="button" id="send-tops-slack-btn" class="btn btn--ghost">📤 Отправить в Slack за выбранный период</button>
+          <span id="send-tops-slack-status" class="status-line"></span>
+        </div>
         <div class="table-scroll">
           <table class="table analytics-table" id="tops-table">
             <thead>

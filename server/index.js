@@ -11,7 +11,7 @@ const analytics = require('./analytics');
 const jobStatus = require('./jobStatus');
 const metaMarketing = require('./metaMarketing');
 const airtable = require('./airtable');
-const { checkNewTopCreatives, warsawDateString } = require('./slackAlerts');
+const { checkNewTopCreatives, sendTopCreativesForRange, warsawDateString } = require('./slackAlerts');
 const googleDrive = require('./googleDrive');
 
 const app = express();
@@ -376,6 +376,20 @@ async function getAudienceRows(since, until) {
   audienceRowsCache.set(key, entry);
   return entry;
 }
+
+// Ручная отправка топ-креативов (Promising+) за произвольный период в Slack —
+// по кнопке "Отправить в Slack" на вкладке TOPS, а не по расписанию/визиту.
+app.post('/api/slack/send-top-creatives', async (req, res) => {
+  try {
+    const { since, until } = req.body;
+    if (!since || !until) return res.status(400).json({ error: 'Нужны since и until' });
+    const sent = await sendTopCreativesForRange(since, until);
+    res.json({ sent });
+  } catch (err) {
+    console.error('[slack-alert] Ручная отправка не удалась:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.get('/api/analytics/audience', async (req, res) => {
   try {

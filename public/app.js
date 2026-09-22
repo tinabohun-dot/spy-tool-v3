@@ -804,8 +804,28 @@ $('#analytics-subtabs').addEventListener('click', (e) => {
 
 $('#analytics-period-presets').addEventListener('click', (e) => {
   const btn = e.target.closest('.segmented__btn');
-  if (!btn) return;
+  if (!btn || btn.id === 'analytics-closed-week-btn') return;
   setAnalyticsPeriod(+btn.dataset.days);
+  loadActiveSubtab();
+});
+
+// "Закрытая неделя" — последняя полностью завершившаяся календарная неделя
+// пн-вс (не скользящие 7 дней): если сегодня, скажем, вторник 22.09, ближайший
+// понедельник — 21.09, а закрытая неделя — та, что перед ним, 14.09-20.09.
+function setClosedWeekPeriod() {
+  const today = new Date();
+  const dayOfWeek = today.getDay(); // 0=вс, 1=пн, ... 6=сб
+  const daysSinceMonday = (dayOfWeek + 6) % 7;
+  const thisMonday = new Date(today.getTime() - daysSinceMonday * 86400000);
+  const closedWeekStart = new Date(thisMonday.getTime() - 7 * 86400000);
+  const closedWeekEnd = new Date(thisMonday.getTime() - 1 * 86400000);
+  $('#analytics-since').value = closedWeekStart.toISOString().slice(0, 10);
+  $('#analytics-until').value = closedWeekEnd.toISOString().slice(0, 10);
+  $all('#analytics-period-presets .segmented__btn').forEach((b) => b.classList.toggle('is-active', b.id === 'analytics-closed-week-btn'));
+}
+
+$('#analytics-closed-week-btn').addEventListener('click', () => {
+  setClosedWeekPeriod();
   loadActiveSubtab();
 });
 
@@ -1101,6 +1121,29 @@ async function loadTops(since, until) {
     $('#analytics-status').textContent = 'Ошибка: ' + err.message;
   }
 }
+
+$('#send-tops-slack-btn').addEventListener('click', async () => {
+  const since = $('#analytics-since').value;
+  const until = $('#analytics-until').value;
+  const btn = $('#send-tops-slack-btn');
+  const status = $('#send-tops-slack-status');
+  if (!confirm(`Отправить в Slack все креативы Promising+ за ${since}–${until}?`)) return;
+  btn.disabled = true;
+  status.textContent = 'Отправляю...';
+  try {
+    const resp = await fetch('/api/slack/send-top-creatives', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ since, until })
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Ошибка запроса');
+    status.textContent = `Готово: отправлено ${data.sent} креативов.`;
+  } catch (err) {
+    status.textContent = 'Ошибка: ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
 
 async function loadFormats(since, until) {
   $('#analytics-status').textContent = 'Загружаю...';

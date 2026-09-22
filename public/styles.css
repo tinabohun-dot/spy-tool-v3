@@ -265,6 +265,8 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
 }
 @keyframes job-spin { to { transform: rotate(360deg); } }
 
+.tops-slack-row { display: flex; align-items: center; gap: 12px; margin: 4px 0 14px; }
+
 .analytics-filters { display: flex; align-items: flex-end; gap: 14px; margin: 16px 0 8px; flex-wrap: wrap; }
 .analytics-filters .field { flex-direction: row; align-items: center; gap: 8px; }
 .analytics-filters .field__label { font-size: 13px; }

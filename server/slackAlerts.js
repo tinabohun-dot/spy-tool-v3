@@ -176,22 +176,23 @@ async function checkNewTopCreatives() {
   }
 }
 
-// Разовая ручная рассылка — все текущие топ-креативы (Promising+) за
-// указанную дату (по умолчанию вчера), без проверки "уже писали или нет".
-// Для пересылки уже отправленных ранее креативов в новом формате (с
-// превью/цветом) — не трогает notified_top_creatives.
-async function resendTopCreatives(daysAgo = 1) {
-  const day = warsawDateString(daysAgo);
-  const allRows = await metaMarketing.fetchAllAccountsInsights(day, day);
+// Ручная рассылка по кнопке "Отправить в Slack" в TOPS — все текущие
+// топ-креативы (Promising+) за произвольный период, который выбирает сама
+// Тина (например, "закрытая неделя"), без проверки "уже писали или нет" —
+// это не автоматическое уведомление об изменениях, а разовый снимок по
+// запросу, поэтому не трогает notified_top_creatives.
+async function sendTopCreativesForRange(since, until) {
+  const allRows = await metaMarketing.fetchAllAccountsInsights(since, until);
   const creatives = metaMarketing.groupRowsByCreative(allRows).map(metaMarketing.buildCreativeEntry);
   const topCreatives = creatives.filter((c) => metaMarketing.SUCCESS_GRADES.includes(c.grade));
   for (const c of topCreatives) c.accountBreakdown = buildAccountBreakdown(c, allRows);
   await metaMarketing.attachPreviews(topCreatives);
 
-  console.log(`[slack-alert] resend ${day}: ${topCreatives.length} креативов Promising+`);
+  console.log(`[slack-alert] ручная отправка ${since}..${until}: ${topCreatives.length} креативов Promising+`);
   for (const c of topCreatives) {
     await postCreativeAlert(c);
   }
+  return topCreatives.length;
 }
 
-module.exports = { checkNewTopCreatives, resendTopCreatives, warsawDateString };
+module.exports = { checkNewTopCreatives, sendTopCreativesForRange, warsawDateString };
