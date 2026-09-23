@@ -856,8 +856,13 @@ async function loadAnalytics(since, until) {
   }
 }
 
+// Один креатив, объединённый из нескольких аккаунтов, может числиться сразу
+// в нескольких воронках (c.funnel вида "Sensory Kid / Brain Activation") —
+// список для фильтра строим по отдельным воронкам, а не по этим составным
+// строкам целиком, иначе такой креатив нельзя было бы найти ни по одной из
+// них.
 function populateFunnelFilter() {
-  const funnels = [...new Set(analyticsData.overall.creatives.map((c) => c.funnel || '—'))].sort();
+  const funnels = [...new Set(analyticsData.overall.creatives.flatMap((c) => (c.funnel || '—').split(' / ')))].sort();
   const select = $('#analytics-funnel-filter');
   const current = select.value;
   select.innerHTML = '<option value="">Все воронки</option>' + funnels.map((f) => `<option value="${f}">${f}</option>`).join('');
@@ -1024,7 +1029,7 @@ function renderAnalyticsView() {
   let creatives = source.creatives.filter((c) => {
     if (analyticsGradeFilter && c.grade !== analyticsGradeFilter) return false;
     if (analyticsTypeFilter && c.type !== analyticsTypeFilter) return false;
-    if (analyticsFunnelFilter && (c.funnel || '—') !== analyticsFunnelFilter) return false;
+    if (analyticsFunnelFilter && !(c.funnel || '—').split(' / ').includes(analyticsFunnelFilter)) return false;
     if (analyticsNameFilter && !c.name.toLowerCase().includes(analyticsNameFilter)) return false;
     return true;
   });

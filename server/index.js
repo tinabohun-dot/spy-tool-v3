@@ -279,8 +279,13 @@ app.get('/api/analytics/formats', async (req, res) => {
     const funnel = {};
     for (const c of creatives) {
       format[c.type] = (format[c.type] || 0) + 1;
-      const f = c.funnel || '—';
-      funnel[f] = (funnel[f] || 0) + 1;
+      // Креатив, объединённый из нескольких аккаунтов, может числиться сразу
+      // в нескольких воронках ("Sensory Kid / Brain Activation") — считаем
+      // его в каждую отдельно, а не заводим отдельный бакет под составную
+      // строку.
+      for (const f of (c.funnel || '—').split(' / ')) {
+        funnel[f] = (funnel[f] || 0) + 1;
+      }
     }
     const platform = await metaMarketing.fetchPlatformBreakdown(since, until);
 

@@ -299,7 +299,7 @@ function groupRowsByCreative(allRows) {
     const key = groupKey !== null ? groupKey : '__noNum__' + row.ad_name;
     if (!groups[key]) {
       const copy = {
-        ...row, _mergedCount: 1, _accountNames: [row._accountName],
+        ...row, _mergedCount: 1, _accountNames: [row._accountName], _campaignNames: [row.campaign_name],
         _prevPlays: getVideoMetric(row.video_play_actions), _adIds: [row.ad_id]
       };
       groups[key] = copy;
@@ -310,6 +310,7 @@ function groupRowsByCreative(allRows) {
     target._mergedCount++;
     target._adIds.push(row.ad_id);
     if (!target._accountNames.includes(row._accountName)) target._accountNames.push(row._accountName);
+    if (!target._campaignNames.includes(row.campaign_name)) target._campaignNames.push(row.campaign_name);
     if (row.ad_name.length < target.ad_name.length) target.ad_name = row.ad_name;
     for (const f of ['impressions', 'reach', 'clicks', 'unique_clicks', 'spend']) {
       target[f] = String((parseFloat(target[f] || 0) + parseFloat(row[f] || 0)));
@@ -387,7 +388,13 @@ function buildCreativeEntry(row) {
     mergedCount: row._mergedCount || 1,
     accounts: row._accountNames || (row._accountName ? [row._accountName] : []),
     campaignName: row.campaign_name || '',
-    funnel: getFunnelFromCampaign(row.campaign_name),
+    // Один и тот же креатив может крутиться в разных кампаниях/воронках в
+    // разных аккаунтах (см. _campaignNames при мёрдже в groupRowsByCreative) —
+    // раньше здесь брался campaign_name только первой попавшейся строки, из-за
+    // чего в "Все аккаунты" воронка могла показывать не ту, что видна при
+    // фильтре по конкретному аккаунту. Собираем воронки со всех объединённых
+    // кампаний и показываем все различающиеся.
+    funnel: [...new Set((row._campaignNames || [row.campaign_name]).map(getFunnelFromCampaign).filter(Boolean))].join(' / '),
     spend,
     impressions,
     reach,
