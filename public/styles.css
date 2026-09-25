@@ -317,5 +317,4 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
 .grade-row--Scale { background: #bbdefb20; }
 .grade-row--Test { background: #ffe0b220; }
 .grade-row--Promising { background: #e1bee720; }
-.grade-row--Bad { background: #e6b8b820; }
-.grade-row--No-purchases { background: #ffcdd220; }
+.grade-row--Bedolaga { background: #e6b8b820; }

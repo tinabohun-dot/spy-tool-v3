@@ -743,8 +743,7 @@ const GRADE_BADGE_COLORS = {
   'Test': { bg: '#ffe0b2', color: '#e65100' },
   'Scale': { bg: '#bbdefb', color: '#0d47a1' },
   'Alpha': { bg: '#c8e6c9', color: '#1b5e20' },
-  'Bad': { bg: '#e6b8b8', color: '#7f0000' },
-  'No purchases': { bg: '#ffcdd2', color: '#b71c1c' }
+  'Bedolaga': { bg: '#e6b8b8', color: '#7f0000' }
 };
 
 let analyticsInited = false;
@@ -999,7 +998,7 @@ for (const tbodyId of ['#analytics-tbody', '#tops-tbody']) {
   });
 }
 
-const GRADE_RANK = { 'Alpha': 5, 'Scale': 4, 'Test': 3, 'Promising': 2, 'Bad': 1, 'No purchases': 0 };
+const GRADE_RANK = { 'Alpha': 5, 'Scale': 4, 'Test': 3, 'Promising': 2, 'Bedolaga': 1 };
 
 // Общая сортировка для любой таблицы креативов (Все креативы, Аудитория —
 // обе рендерят один и тот же набор полей через renderAnalyticsRow), чтобы

@@ -14,8 +14,7 @@ const GRADE_COLORS = {
   'Scale': '#0d47a1',
   'Test': '#e65100',
   'Promising': '#4a148c',
-  'Bad': '#7f0000',
-  'No purchases': '#b71c1c'
+  'Bedolaga': '#7f0000'
 };
 
 // Slack не умеет красить отдельные слова в тексте сообщения — ближайший
@@ -25,8 +24,7 @@ const GRADE_EMOJI = {
   'Scale': '🔵',
   'Test': '🟠',
   'Promising': '🟣',
-  'Bad': '🔴',
-  'No purchases': '🔴'
+  'Bedolaga': '🔴'
 };
 
 async function postToSlack(payload) {

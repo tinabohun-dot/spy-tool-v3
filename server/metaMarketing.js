@@ -5,7 +5,7 @@
 const API_VERSION = 'v19.0';
 
 const CPA_THRESHOLD = 75;
-const GRADE_THRESHOLDS = { ALPHA: 50, SCALE: 20, TEST: 10, PROMISING: 3 };
+const GRADE_THRESHOLDS = { ALPHA: 50, SCALE: 10, TEST: 5, PROMISING: 2 };
 const SUCCESS_GRADES = ['Promising', 'Test', 'Scale', 'Alpha'];
 
 const PURCHASE_TYPES_PRIORITY = [
@@ -343,16 +343,16 @@ function getFunnelFromCampaign(campaignName) {
   return 'Test';
 }
 
+// "Bad" и "No purchases" убраны как отдельные грейды — всё, что не
+// дотягивает до Promising (по покупкам или по CPA), падает в "Bedolaga".
 function getGrade(purchases, cpa) {
   const cpaNum = (cpa === '' || cpa === null || cpa === undefined) ? Infinity : cpa;
-  if (purchases === 0) return 'No purchases';
-  if (purchases >= 1 && purchases <= 2) return 'Bad';
-  if (cpaNum >= CPA_THRESHOLD) return 'Bad';
-  if (purchases >= GRADE_THRESHOLDS.ALPHA) return 'Alpha';
-  if (purchases >= GRADE_THRESHOLDS.SCALE) return 'Scale';
-  if (purchases >= GRADE_THRESHOLDS.TEST) return 'Test';
-  if (purchases >= GRADE_THRESHOLDS.PROMISING) return 'Promising';
-  return 'Bad';
+  const cpaOk = cpaNum < CPA_THRESHOLD;
+  if (purchases >= GRADE_THRESHOLDS.ALPHA && cpaOk) return 'Alpha';
+  if (purchases >= GRADE_THRESHOLDS.SCALE && cpaOk) return 'Scale';
+  if (purchases >= GRADE_THRESHOLDS.TEST && cpaOk) return 'Test';
+  if (purchases >= GRADE_THRESHOLDS.PROMISING && cpaOk) return 'Promising';
+  return 'Bedolaga';
 }
 
 function buildCreativeEntry(row) {
