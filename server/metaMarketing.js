@@ -327,20 +327,21 @@ function groupRowsByCreative(allRows) {
   return order.map((k) => groups[k]);
 }
 
-// Воронка — по названию кампании (там зашит слаг вида "toddler-quiz-fl-v1",
-// "brain-activation-fl-v2" и т.п.), портировано один в один из личного
-// скрипта пользователя (getFunnelFromCampaign) — там это определялось корректно.
+// Воронка — по названию кампании: в нём всегда есть слаг вида
+// "school-bullying-fl-v1", "brain-activation-fl-v2" и т.п. (слова через
+// дефис + "-fl-v<номер>"). Раньше тут был фиксированный список известных
+// воронок с фоллбэком на 'Test', из-за чего любая новая воронка, которой нет
+// в списке, ошибочно показывалась как "Test". Теперь слаг вытаскивается из
+// названия кампании автоматически — новые воронки подхватываются сами, без
+// правок кода.
 function getFunnelFromCampaign(campaignName) {
   if (!campaignName) return null;
-  const text = campaignName.toLowerCase();
-  if (/toddler-quiz/.test(text)) return 'Toddler';
-  if (/brain-activation/.test(text)) return 'Brain Activation';
-  if (/sensory-kids?/.test(text)) return 'Sensory Kid';
-  if (/potty-training/.test(text)) return 'Potty Training';
-  if (/general-kids/.test(text)) return 'General';
-  if (/mix/.test(text)) return 'Mix';
-  if (/yelling/.test(text)) return 'Stop Yelling';
-  return 'Test';
+  const match = campaignName.match(/([a-z0-9]+(?:-[a-z0-9]+)*)-fl-v\d+/i);
+  if (!match) return null;
+  return match[1]
+    .split('-')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
 }
 
 // "Bad" и "No purchases" убраны как отдельные грейды — всё, что не
