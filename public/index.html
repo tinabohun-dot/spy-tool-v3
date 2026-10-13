@@ -475,7 +475,7 @@
         <div class="panel-grid">
           <div class="panel-card">
             <h3>Продакшн по дням</h3>
-            <p class="hint">Сколько задач дошло до "To Test" за выбранный период</p>
+            <p class="hint">Сколько задач дошло до "To Test" за выбранный период, с разбивкой по дизайнерам (наведи на столбец)</p>
             <p id="production-number" class="big-number">—</p>
             <canvas id="chart-production-by-day"></canvas>
           </div>
@@ -487,7 +487,13 @@
           </div>
           <div class="panel-card">
             <h3>По дизайнерам</h3>
+            <p class="hint">Клик — список задач по дням</p>
             <div id="production-designer-bars" class="bar-list"></div>
+          </div>
+          <div class="panel-card panel-card--wide">
+            <h3>Видео и статика по дизайнерам</h3>
+            <p class="hint">V — видео, S — статика: сколько каждый дизайнер сдал в "To Test" по дням</p>
+            <div id="production-format-table"></div>
           </div>
           <div class="panel-card">
             <h3>По воронкам</h3>

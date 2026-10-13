@@ -102,7 +102,7 @@ function previousEquivalentPeriod(since, until) {
 // такой же длины, и сколько из произведённого реально "напущено" в Meta
 // (Task ID встречается среди реальных объявлений в аккаунтах).
 function pushTask(map, key, t) {
-  (map[key] ||= []).push({ taskId: t.taskId, taskName: t.taskName });
+  (map[key] ||= []).push({ taskId: t.taskId, taskName: t.taskName, creoType: t.creoType });
 }
 
 async function productionReport(since, until, launchedTaskNumbers) {
@@ -112,6 +112,10 @@ async function productionReport(since, until, launchedTaskNumbers) {
   const byDay = {};
   const byDesigner = {};
   const byDesignerTasks = {};
+  const byDayDesigner = {};
+  const byDesignerTasksByDay = {};
+  const byDesignerFormat = {};
+  const byDayDesignerFormat = {};
   const byFunnel = {};
   let video = 0; let staticCount = 0; let launched = 0;
 
@@ -124,6 +128,16 @@ async function productionReport(since, until, launchedTaskNumbers) {
     const d = t.designer || '—';
     byDesigner[d] = (byDesigner[d] || 0) + 1;
     pushTask(byDesignerTasks, d, t);
+
+    (byDayDesigner[day] ||= {});
+    byDayDesigner[day][d] = (byDayDesigner[day][d] || 0) + 1;
+    (byDesignerTasksByDay[d] ||= {});
+    pushTask(byDesignerTasksByDay[d], day, t);
+
+    const fmt = t.creoType === 'Video' ? 'Video' : t.creoType === 'Static' ? 'Static' : 'Other';
+    (byDesignerFormat[d] ||= { Video: 0, Static: 0, Other: 0 })[fmt]++;
+    (byDayDesignerFormat[day] ||= {});
+    (byDayDesignerFormat[day][d] ||= { Video: 0, Static: 0, Other: 0 })[fmt]++;
 
     const funnel = t.funnel || '—';
     byFunnel[funnel] = (byFunnel[funnel] || 0) + 1;
@@ -146,6 +160,10 @@ async function productionReport(since, until, launchedTaskNumbers) {
     byDay: Object.entries(byDay).map(([day, count]) => ({ day, count })).sort((a, b) => a.day.localeCompare(b.day)),
     byDesigner: Object.fromEntries(Object.entries(byDesigner).sort((a, b) => b[1] - a[1])),
     byDesignerTasks,
+    byDayDesigner,
+    byDesignerTasksByDay,
+    byDesignerFormat,
+    byDayDesignerFormat,
     byFunnel: Object.fromEntries(Object.entries(byFunnel).sort((a, b) => b[1] - a[1]))
   };
 }

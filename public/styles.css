@@ -318,3 +318,14 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
 .grade-row--Test { background: #ffe0b220; }
 .grade-row--Promising { background: #e1bee720; }
 .grade-row--Bedolaga { background: #e6b8b820; }
+
+.panel-card--wide { grid-column: 1 / -1; }
+.fmt-tag { display: inline-block; padding: 1px 6px; border-radius: 6px; font-size: 11px; font-weight: 600; background: #eee; color: var(--ink); }
+.fmt-tag--video { background: #d7efe3; color: #1b6e46; }
+.fmt-tag--static { background: #f8dccd; color: #a4421b; }
+.bar-row__fmt-summary { color: var(--muted, #777); font-size: 12px; }
+.fmt-table-wrap { overflow-x: auto; }
+.fmt-table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.fmt-table th, .fmt-table td { padding: 6px 10px; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.fmt-table th { font-weight: 600; color: var(--muted, #777); }
+.stacked-bar--mini { margin: 0; display: flex; width: 110px; height: 10px; border-radius: 5px; overflow: hidden; background: #eee; }

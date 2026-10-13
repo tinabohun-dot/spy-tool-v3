@@ -434,6 +434,21 @@ document.addEventListener('click', (e) => {
   if (list && list.classList.contains('bar-row__tasks')) list.hidden = !list.hidden;
 });
 
+function formatTag(creoType) {
+  if (creoType === 'Video') return '<span class="fmt-tag fmt-tag--video">V</span> ';
+  if (creoType === 'Static') return '<span class="fmt-tag fmt-tag--static">S</span> ';
+  return '';
+}
+
+function formatSummary(tasks) {
+  const v = tasks.filter((t) => t.creoType === 'Video').length;
+  const st = tasks.filter((t) => t.creoType === 'Static').length;
+  const parts = [];
+  if (v) parts.push(`${v} видео`);
+  if (st) parts.push(`${st} статика`);
+  return parts.length ? `(${parts.join(' · ')})` : '';
+}
+
 // Как renderBarListWithTasks, но список задач при разворачивании
 // сгруппирован по дням (для "По воронке" в UA — период может быть
 // многодневным, и важно видеть, сколько и какие номера ушли именно в
@@ -446,8 +461,8 @@ function renderFunnelBarWithDayGroups(sel, byFunnel, tasksByDayPerFunnel) {
     const days = Object.keys(byDay).sort();
     const groups = days.map((day) => {
       const tasks = byDay[day];
-      const items = tasks.map((t) => `<li>${t.taskId != null ? `#${t.taskId}` : ''} ${t.taskName || ''}</li>`).join('');
-      return `<li class="bar-row__day-group"><strong>${day} — ${tasks.length} шт.</strong><ul>${items}</ul></li>`;
+      const items = tasks.map((t) => `<li>${formatTag(t.creoType)}${t.taskId != null ? `#${t.taskId}` : ''} ${t.taskName || ''}</li>`).join('');
+      return `<li class="bar-row__day-group"><strong>${day} — ${tasks.length} шт.</strong> <span class="bar-row__fmt-summary">${formatSummary(tasks)}</span><ul>${items}</ul></li>`;
     }).join('');
     return `
       <div class="bar-row bar-row--expandable" data-key="${funnel}">
@@ -1339,11 +1354,23 @@ async function loadProduction(since, until) {
       : `<span class="big-number__pct ${data.pctChange >= 0 ? 'big-number__pct--up' : 'big-number__pct--down'}">${data.pctChange >= 0 ? '↗' : '↘'}${data.pctChange}%</span>`;
     $('#production-number').innerHTML = `${data.total}${pctHtml}`;
 
+    const days = data.byDay.map((d) => d.day);
+    const designers = Object.keys(data.byDesigner);
     destroyChart('productionByDay');
     charts.productionByDay = new Chart($('#chart-production-by-day'), {
-      type: 'line',
-      data: { labels: data.byDay.map((d) => d.day), datasets: [{ label: 'Задач', data: data.byDay.map((d) => d.count), borderColor: '#d95f2b', tension: 0.3 }] },
-      options: { plugins: { legend: { display: false } } }
+      type: 'bar',
+      data: {
+        labels: days,
+        datasets: designers.map((d, i) => ({
+          label: d,
+          data: days.map((day) => data.byDayDesigner[day]?.[d] || 0),
+          backgroundColor: CATEGORY_COLORS[i % CATEGORY_COLORS.length]
+        }))
+      },
+      options: {
+        plugins: { legend: { display: designers.length > 1 } },
+        scales: { x: { stacked: true }, y: { stacked: true, ticks: { precision: 0 } } }
+      }
     });
 
     renderGenericStackedBar('#production-launched-bar', '#production-launched-legend', [
@@ -1351,11 +1378,35 @@ async function loadProduction(since, until) {
       { label: 'Ещё нет', value: data.notLaunched, color: '#c9c9c4' }
     ]);
 
-    renderBarListWithTasks('#production-designer-bars', data.byDesigner, data.byDesignerTasks);
+    renderFunnelBarWithDayGroups('#production-designer-bars', data.byDesigner, data.byDesignerTasksByDay);
+    renderDesignerFormatTable('#production-format-table', data, days, designers);
     renderBarList('#production-funnel-bars', data.byFunnel);
   } catch (err) {
     $('#analytics-status').textContent = 'Ошибка: ' + err.message;
   }
+}
+
+// Таблица "кто что делает": строки — дизайнеры, колонки — дни, в ячейке
+// сколько видео (V) и статики (S) сдал дизайнер в этот день; справа итог за
+// период и полоска соотношения видео/статика.
+function renderDesignerFormatTable(sel, data, days, designers) {
+  if (!designers.length) { $(sel).innerHTML = '<p class="hint">Пока нет данных</p>'; return; }
+  const cell = (f) => {
+    if (!f) return '<span class="fmt-cell fmt-cell--empty">—</span>';
+    const parts = [];
+    if (f.Video) parts.push(`<span class="fmt-tag fmt-tag--video">${f.Video}V</span>`);
+    if (f.Static) parts.push(`<span class="fmt-tag fmt-tag--static">${f.Static}S</span>`);
+    if (f.Other) parts.push(`<span class="fmt-tag">${f.Other}?</span>`);
+    return parts.join(' ');
+  };
+  const head = `<tr><th>Дизайнер</th>${days.map((d) => `<th>${d.slice(5)}</th>`).join('')}<th>Итого</th><th>Видео / статика</th></tr>`;
+  const rows = designers.map((d) => {
+    const tot = data.byDesignerFormat[d];
+    const sum = (tot.Video + tot.Static + tot.Other) || 1;
+    const bar = `<span class="stacked-bar stacked-bar--mini"><span class="stacked-bar__seg" style="width:${tot.Video / sum * 100}%;background:#2ea56f"></span><span class="stacked-bar__seg" style="width:${tot.Static / sum * 100}%;background:#d95f2b"></span></span>`;
+    return `<tr><td><strong>${d}</strong></td>${days.map((day) => `<td>${cell(data.byDayDesignerFormat[day]?.[d])}</td>`).join('')}<td>${cell(tot)}</td><td>${bar}</td></tr>`;
+  }).join('');
+  $(sel).innerHTML = `<div class="fmt-table-wrap"><table class="fmt-table"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function renderPctBigNumber(sel, total, pctChange) {
