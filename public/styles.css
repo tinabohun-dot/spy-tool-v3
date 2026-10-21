@@ -392,7 +392,14 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
 .tst-stand { display: flex; align-items: baseline; gap: 14px; padding: 6px 0; }
 .tst-stand__id { font-size: 18px; min-width: 60px; }
 .tst-footnote { margin-top: 10px; }
-@media (max-width: 900px) {
-  .tst-kpis { grid-template-columns: repeat(2, 1fr); }
+@media (max-width: 1150px) {
+  .tst-kpis { grid-template-columns: repeat(3, 1fr); }
   .tst-grid { grid-template-columns: 1fr; }
 }
+@media (max-width: 600px) {
+  .tst-kpis { grid-template-columns: repeat(2, 1fr); }
+}
+
+.tst-grid .panel-card { min-width: 0; }
+.tst-kpi__value { white-space: nowrap; }
+.tst-table th, .tst-table td { white-space: nowrap; }

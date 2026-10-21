@@ -1714,7 +1714,7 @@ function renderTesting(d) {
     <td>${f.creatives}</td><td>${srMoney(f.spend)}</td><td>${f.purchases}</td>
     <td>${f.cpa ? '$' + Math.round(f.cpa) : '—'}</td>
     <td class="tst-green"><strong>${f.buyers} из ${f.creatives} · ${srPct(f.buyersPct)}</strong></td></tr>`).join('');
-  $('#tst-table').innerHTML = `<table class="table tst-table"><thead><tr><th>Воронка</th><th>Креативы</th><th>Затраты</th><th>Покупки</th><th>CPA</th><th>Дали покупку</th></tr></thead><tbody>${rows}</tbody></table>`;
+  $('#tst-table').innerHTML = `<div class="fmt-table-wrap"><table class="table tst-table"><thead><tr><th>Воронка</th><th>Креативы</th><th>Затраты</th><th>Покупки</th><th>CPA</th><th>Дали покупку</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 
   const byShare = d.funnels.slice().sort((a, b) => b.buyersPct - a.buyersPct);
   const maxPct = Math.max(0.01, ...byShare.map((f) => f.buyersPct));
