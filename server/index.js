@@ -197,7 +197,9 @@ app.get('/api/analytics', async (req, res) => {
     const accNames = Object.keys(metaMarketing.accounts());
     if (!accNames.length) return res.status(400).json({ error: 'META_MARKETING_ACCOUNTS не задан в server/.env' });
 
-    const allRows = await metaMarketing.fetchAllAccountsInsights(since, until);
+    const allRows = metaMarketing.filterRowsByCampaignMode(
+      await metaMarketing.fetchAllAccountsInsights(since, until), req.query.campaignMode
+    );
 
     const overallCreatives = await metaMarketing.attachPreviews(
       metaMarketing.groupRowsByCreative(allRows).map(metaMarketing.buildCreativeEntry)

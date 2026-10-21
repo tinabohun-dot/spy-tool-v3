@@ -858,6 +858,8 @@ async function loadAnalytics(since, until) {
   $('#analytics-tbody').innerHTML = '';
   try {
     const params = new URLSearchParams({ since, until });
+    const campaignMode = $('#analytics-campaign-filter').value;
+    if (campaignMode) params.set('campaignMode', campaignMode);
     const resp = await fetch(`/api/analytics?${params}`);
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || 'Ошибка запроса');
@@ -914,6 +916,7 @@ $('#analytics-account-chips').addEventListener('click', (e) => {
 
 $('#analytics-grade-filter').addEventListener('change', (e) => { analyticsGradeFilter = e.target.value; renderAnalyticsView(); });
 $('#analytics-type-filter').addEventListener('change', (e) => { analyticsTypeFilter = e.target.value; renderAnalyticsView(); });
+$('#analytics-campaign-filter').addEventListener('change', () => loadAnalytics($('#analytics-since').value, $('#analytics-until').value));
 $('#analytics-funnel-filter').addEventListener('change', (e) => { analyticsFunnelFilter = e.target.value; renderAnalyticsView(); });
 $('#analytics-name-filter').addEventListener('input', (e) => { analyticsNameFilter = e.target.value.toLowerCase(); renderAnalyticsView(); });
 

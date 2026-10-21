@@ -369,6 +369,17 @@ function primaryCampaignName(row) {
   return best || row.campaign_name;
 }
 
+// Фильтр по типу кампании: в названии тестовых кампаний на креативы стоит
+// метка "CREO-TEST" (не путать с "LOC-TEST" и т.п.). mode: 'creo-test' —
+// только такие кампании, 'no-creo-test' — все кроме них, иначе без фильтра.
+// Фильтруем строки до группировки, чтобы spend/покупки/грейд креатива
+// считались только по выбранным кампаниям.
+function filterRowsByCampaignMode(rows, mode) {
+  if (mode !== 'creo-test' && mode !== 'no-creo-test') return rows;
+  const isCreoTest = (r) => /creo-test/i.test(r.campaign_name || '');
+  return rows.filter((r) => (mode === 'creo-test' ? isCreoTest(r) : !isCreoTest(r)));
+}
+
 function buildCreativeEntry(row) {
   const impressions = parseInt(row.impressions || 0, 10);
   const reach = parseInt(row.reach || 0, 10);
@@ -529,7 +540,7 @@ async function attachPreviews(creatives) {
 module.exports = {
   accounts, fetchAllAccountsInsights, fetchAccountInsights,
   fetchAllAccountsInsightsBreakdown,
-  groupRowsByCreative, buildCreativeEntry, summarize, attachPreviews,
+  groupRowsByCreative, buildCreativeEntry, summarize, attachPreviews, filterRowsByCampaignMode,
   fetchLaunchedTaskNumbers, fetchPlatformBreakdown, fetchDemographics,
   fetchAdPreview,
   SUCCESS_GRADES
