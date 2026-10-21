@@ -1719,9 +1719,11 @@ function renderTstPeople() {
     </tr>
     <tr class="tst-person__list" data-for="${i}" hidden><td colspan="9">${p.list.map((c) => {
       const gc = GRADE_BADGE_COLORS[c.grade];
-      return `<div class="tst-person__item"><strong>${c.taskId ? '№' + c.taskId : srEsc(c.name)}</strong>
+      const fullName = String(c.name || '').replace(/\.(mp4|mov|jpg|jpeg|png)$/i, '');
+      return `<div class="tst-person__item">
         <span class="grade-badge" style="background:${gc.bg};color:${gc.color}">${c.grade}</span>
-        <span>${c.purchases} ${plural(c.purchases, 'покупка', 'покупки', 'покупок')} · CPA ${c.cpa ? '$' + Math.round(c.cpa) : '—'} · ${srMoney(c.spend)}</span></div>`;
+        <span class="tst-person__name">${srEsc(fullName)}</span>
+        <span class="tst-person__stat">${c.purchases} ${plural(c.purchases, 'покупка', 'покупки', 'покупок')} · CPA ${c.cpa ? '$' + Math.round(c.cpa) : '—'} · ${srMoney(c.spend)}</span></div>`;
     }).join('')}</td></tr>`).join('')}</tbody></table></div>`;
 }
 
