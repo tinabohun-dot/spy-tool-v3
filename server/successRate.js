@@ -136,4 +136,58 @@ async function successRateReport(since, until) {
   };
 }
 
-module.exports = { successRateReport };
+// Эффективность тестирования: от теста до покупки. Тестом считаем креатив,
+// на который реально потрачены деньги (spend > 0); "дал покупку" —
+// purchases > 0. Воронка креатива — кампания с наибольшим spend (как в SR).
+async function testingReport(since, until) {
+  const allRows = await metaMarketing.fetchAllAccountsInsights(since, until);
+  const all = metaMarketing.groupRowsByCreative(allRows).map(metaMarketing.buildCreativeEntry);
+  const creatives = all.filter((c) => c.spend > 0);
+  const zeroSpend = all.length - creatives.length;
+
+  const pack = (c) => {
+    const m = String(c.name || '').trim().match(/^(\d+)/);
+    return { taskId: m ? m[1] : null, name: c.name, grade: c.grade, purchases: c.purchases, cpa: c.cpa, spend: c.spend };
+  };
+
+  const spend = sum(creatives, (c) => c.spend);
+  const purchases = sum(creatives, (c) => c.purchases);
+  const buyers = creatives.filter((c) => c.purchases > 0);
+  const nonBuyers = creatives.filter((c) => c.purchases === 0);
+  const wastedSpend = sum(nonBuyers, (c) => c.spend);
+
+  const names = [...new Set(creatives.map((c) => c.primaryFunnel || 'Другое'))];
+  const funnels = names.map((name) => {
+    const subset = creatives.filter((c) => (c.primaryFunnel || 'Другое') === name);
+    const fSpend = sum(subset, (c) => c.spend);
+    const fPurchases = sum(subset, (c) => c.purchases);
+    const fBuyers = subset.filter((c) => c.purchases > 0).length;
+    return {
+      name, creatives: subset.length, spend: fSpend, purchases: fPurchases,
+      cpa: fPurchases > 0 ? fSpend / fPurchases : null,
+      buyers: fBuyers, buyersPct: ratio(fBuyers, subset.length),
+      purchasesShare: ratio(fPurchases, purchases)
+    };
+  }).sort((a, b) => b.spend - a.spend);
+
+  const byPurchases = buyers.slice().sort((a, b) => b.purchases - a.purchases);
+  const standout = byPurchases.slice(0, 3).map(pack);
+  const bestCpa = buyers.filter((c) => c.purchases >= 5 && c.cpa != null).sort((a, b) => a.cpa - b.cpa)[0];
+  if (bestCpa && !standout.some((x) => x.name === bestCpa.name)) standout.push(pack(bestCpa));
+
+  return {
+    since, until,
+    total: {
+      creatives: creatives.length, spend, purchases,
+      cpa: purchases > 0 ? spend / purchases : null,
+      buyers: buyers.length, buyersPct: ratio(buyers.length, creatives.length),
+      nonBuyers: nonBuyers.length, nonBuyersPct: ratio(nonBuyers.length, creatives.length),
+      wastedSpend, wastedPct: ratio(wastedSpend, spend)
+    },
+    funnels,
+    standout,
+    zeroSpend
+  };
+}
+
+module.exports = { successRateReport, testingReport };

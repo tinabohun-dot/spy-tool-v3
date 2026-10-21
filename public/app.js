@@ -806,6 +806,7 @@ function loadActiveSubtab() {
   if (analyticsSubtab === 'cp') return loadCp(since, until);
   if (analyticsSubtab === 'ua') return loadUa(since, until);
   if (analyticsSubtab === 'sr') return loadSuccessRate(since, until);
+  if (analyticsSubtab === 'testing') return loadTesting(since, until);
 }
 
 $('#analytics-subtabs').addEventListener('click', (e) => {
@@ -1622,6 +1623,92 @@ async function loadSuccessRate(since, until) {
     const data = await fetchJson(`/api/analytics/success-rate?${new URLSearchParams({ since, until })}`);
     $('#analytics-status').textContent = '';
     renderSuccessRate(data);
+  } catch (err) {
+    $('#analytics-status').textContent = 'Ошибка: ' + err.message;
+  }
+}
+
+// ---------- Эффективность тестирования ----------
+const TST_COLORS = ['#0b6b5c', '#4a86d8', '#f2b94c', '#d95f2b', '#8b4be0', '#00acc1'];
+
+function plural(n, one, few, many) {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}
+
+function renderTesting(d) {
+  const t = d.total;
+  $('#tst-subtitle').textContent = `${t.creatives} КРЕАТИВОВ · ОТ ТЕСТА ДО ПОКУПКИ`;
+
+  const kpi = (label, value, cls = '') => `<div class="tst-kpi"><div class="tst-kpi__label">${label}</div><div class="tst-kpi__value ${cls}">${value}</div></div>`;
+  $('#tst-kpis').innerHTML = [
+    kpi('Затраты', srMoney(t.spend), 'tst-green'),
+    kpi('Покупки', t.purchases, 'tst-green'),
+    kpi('CPA (blended)', t.cpa ? '$' + Math.round(t.cpa) : '—', 'tst-green'),
+    kpi('Протестировано', t.creatives),
+    kpi('Дали покупку', `${t.buyers} · ${srPct(t.buyersPct)}`, 'tst-green'),
+    kpi('Без покупок', `${t.nonBuyers} · ${srPct(t.nonBuyersPct)}`, 'tst-orange')
+  ].join('');
+
+  const rows = d.funnels.map((f, i) => `<tr>
+    <td><strong style="color:${i === 0 ? '#0b6b5c' : 'inherit'}">${srEsc(f.name)}</strong></td>
+    <td>${f.creatives}</td><td>${srMoney(f.spend)}</td><td>${f.purchases}</td>
+    <td>${f.cpa ? '$' + Math.round(f.cpa) : '—'}</td>
+    <td class="tst-green"><strong>${f.buyers} из ${f.creatives} · ${srPct(f.buyersPct)}</strong></td></tr>`).join('');
+  $('#tst-table').innerHTML = `<table class="table tst-table"><thead><tr><th>Воронка</th><th>Креативы</th><th>Затраты</th><th>Покупки</th><th>CPA</th><th>Дали покупку</th></tr></thead><tbody>${rows}</tbody></table>`;
+
+  const byShare = d.funnels.slice().sort((a, b) => b.buyersPct - a.buyersPct);
+  const maxPct = Math.max(0.01, ...byShare.map((f) => f.buyersPct));
+  $('#tst-chart').innerHTML = byShare.map((f, i) => `
+    <div class="tst-col-bar">
+      <div class="tst-col-bar__val">${srPct(f.buyersPct)}</div>
+      <div class="tst-col-bar__fill" style="height:${Math.max(2, (f.buyersPct / maxPct) * 150)}px;background:${TST_COLORS[i % TST_COLORS.length]}"></div>
+      <div class="tst-col-bar__label">${srEsc(f.name)}</div>
+    </div>`).join('') || '<p class="hint">Нет данных</p>';
+
+  $('#tst-funnel').innerHTML = `
+    <div class="tst-funnel__row">
+      <div><div class="tst-funnel__big tst-green">${t.buyers} / ${t.creatives}</div><div class="hint">креативов дали покупку</div></div>
+      <div><div class="tst-funnel__big tst-orange">${srMoney(t.wastedSpend)}</div><div class="hint">потрачено на ${t.nonBuyers} креативов без покупок · ${srPct(t.wastedPct)} бюджета</div></div>
+    </div>
+    <div class="tst-progress"><span style="width:${t.buyersPct * 100}%"></span></div>`;
+
+  const withBuys = d.funnels.filter((f) => f.purchases > 0);
+  const bestByPurchases = withBuys.slice().sort((a, b) => b.purchases - a.purchases)[0];
+  const bestCpa = withBuys.slice().sort((a, b) => a.cpa - b.cpa)[0];
+  const enough = d.funnels.filter((f) => f.creatives >= 5);
+  const worst = enough.filter((f) => !bestByPurchases || f.name !== bestByPurchases.name).sort((a, b) => a.buyersPct - b.buyersPct)[0];
+  const small = d.funnels.filter((f) => f.creatives < 5);
+  const parts = [];
+  if (bestByPurchases) {
+    parts.push(`<div class="tst-concl"><div class="tst-concl__row"><strong class="tst-green">${srEsc(bestByPurchases.name)}</strong><span>${bestByPurchases.purchases} из ${t.purchases} покупок · ${srPct(bestByPurchases.purchasesShare)}</span></div>
+      ${bestCpa ? `<div class="tst-concl__row"><span class="hint">Лучший CPA среди воронок (${srEsc(bestCpa.name)})</span><strong class="tst-green tst-concl__big">$${Math.round(bestCpa.cpa)}</strong></div>` : ''}</div>`);
+  }
+  if (worst) {
+    parts.push(`<div class="tst-concl"><div class="tst-concl__row"><strong class="tst-orange">${srEsc(worst.name)}</strong><span>${worst.buyers} из ${worst.creatives} дали покупку · CPA ${worst.cpa ? '$' + Math.round(worst.cpa) : '—'}</span></div></div>`);
+  }
+  if (small.length) {
+    parts.push(`<div class="hint">${small.map((f) => `${srEsc(f.name)}: ${f.creatives} ${plural(f.creatives, 'тест', 'теста', 'тестов')}, ${f.purchases} ${plural(f.purchases, 'покупка', 'покупки', 'покупок')}`).join('; ')}. Данных пока мало для вывода.</div>`);
+  }
+  $('#tst-conclusions').innerHTML = parts.join('') || '<p class="hint">Нет данных</p>';
+
+  $('#tst-standout').innerHTML = d.standout.map((c, i) => `
+    <div class="tst-stand">
+      <strong class="tst-stand__id" style="color:${i % 2 ? '#7a4fd6' : '#e8793a'}">${c.taskId ? '№' + c.taskId : srEsc(c.name)}</strong>
+      <span>${c.grade !== 'Bedolaga' ? c.grade + ' · ' : ''}${c.purchases} ${plural(c.purchases, 'покупка', 'покупки', 'покупок')} · CPA ${c.cpa ? '$' + (c.cpa < 100 ? c.cpa.toFixed(1).replace(/\.0$/, '') : Math.round(c.cpa)) : '—'}${c.grade === 'Bedolaga' ? ' · Bedolaga' : ''}</span>
+    </div>`).join('') || '<p class="hint">Пока нет креативов с покупками</p>';
+
+  $('#tst-footnote').textContent = d.zeroSpend ? `Не учтено креативов с $0 затрат: ${d.zeroSpend}.` : '';
+}
+
+async function loadTesting(since, until) {
+  $('#analytics-status').textContent = 'Загружаю...';
+  try {
+    const data = await fetchJson(`/api/analytics/testing?${new URLSearchParams({ since, until })}`);
+    $('#analytics-status').textContent = '';
+    renderTesting(data);
   } catch (err) {
     $('#analytics-status').textContent = 'Ошибка: ' + err.message;
   }

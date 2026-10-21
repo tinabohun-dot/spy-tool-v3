@@ -279,6 +279,17 @@ app.get('/api/analytics/success-rate', async (req, res) => {
   }
 });
 
+app.get('/api/analytics/testing', async (req, res) => {
+  try {
+    const { since, until } = req.query;
+    if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until' });
+    res.json(await require('./successRate').testingReport(since, until));
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 app.get('/api/analytics/formats', async (req, res) => {
   try {
     const { since, until } = req.query;
