@@ -339,12 +339,13 @@ function groupRowsByCreative(allRows) {
 // правок кода.
 function getFunnelFromCampaign(campaignName) {
   if (!campaignName) return null;
+  const title = (slug, sep) => slug.split(sep).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   const match = campaignName.match(/([a-z0-9]+(?:-[a-z0-9]+)*)-fl-v\d+/i);
-  if (!match) return null;
-  return match[1]
-    .split('-')
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(' ');
+  if (match) return title(match[1], '-');
+  // Старые кампании названы с подчёркиваниями ("..._brain_activation_fl_v2_..."):
+  // слаг тут не отделить от остального названия, берём два слова перед "_fl_vN".
+  const legacy = campaignName.match(/([a-z0-9]+_[a-z0-9]+)_fl_v\d+/i);
+  return legacy ? title(legacy[1], '_') : null;
 }
 
 // "Bad" и "No purchases" убраны как отдельные грейды — всё, что не
