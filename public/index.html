@@ -25,6 +25,7 @@
       <button class="side-nav__item is-active" data-view="library">Ad Library</button>
       <button class="side-nav__item" data-view="jobs">Сбор данных</button>
       <button class="side-nav__item" data-view="analytics">Аналитика</button>
+      <button class="side-nav__item" data-view="sr">Success Rate</button>
     </nav>
   </aside>
 
@@ -202,6 +203,104 @@
     </section>
 
     <!-- ===== Аналитика: перформанс своих рекламных кабинетов ===== -->
+    <section id="view-sr" class="view" hidden>
+      <div class="view__header">
+        <h1>Success Rate</h1>
+        <p class="view__sub">Какая доля протестированных креативов дошла до Promising+ и до покупки — по воронкам и тегам.</p>
+      </div>
+      <form id="sr-filters" class="analytics-filters">
+        <div class="segmented" id="sr-period-presets">
+          <button type="button" class="segmented__btn is-active" data-days="0">Сегодня</button>
+          <button type="button" class="segmented__btn" data-days="7">7 дней</button>
+          <button type="button" class="segmented__btn" data-days="14">14 дней</button>
+          <button type="button" class="segmented__btn" data-days="30">30 дней</button>
+          <button type="button" class="segmented__btn" id="sr-closed-week-btn">Закрытая неделя</button>
+        </div>
+        <label class="field">
+          <span class="field__label">С</span>
+          <input type="date" id="sr-since" required />
+        </label>
+        <label class="field">
+          <span class="field__label">По</span>
+          <input type="date" id="sr-until" required />
+        </label>
+        <button type="submit" class="btn btn--primary">Показать</button>
+      </form>
+      <div id="sr-status" class="status-line"></div>
+
+      <div class="tabs" id="sr-subtabs">
+        <button type="button" class="tab is-active" data-subtab="sr">Success Rate</button>
+        <button type="button" class="tab" data-subtab="testing">Эффективность тестов</button>
+      </div>
+
+      <div id="subtab-sr" class="tab-panel is-active">
+        <div class="panel-card sr-board-card">
+          <h3 class="sr-title">Розподіл статусів по воронках</h3>
+          <p id="sr-subtitle" class="sr-subtitle"></p>
+          <div class="sr-legend">
+            <span><i style="background:#c9d0d6"></i>Ниже Promising+</span>
+            <span><i style="background:#f4c15d"></i>Promising</span>
+            <span><i style="background:#6bb5a0"></i>Test</span>
+            <span><i style="background:#5b82d6"></i>Scale</span>
+            <span><i style="background:#8b4be0"></i>Alpha</span>
+          </div>
+          <div id="sr-board"></div>
+          <div id="sr-banner" class="sr-banner"></div>
+          <p id="sr-banner-note" class="sr-banner-note"></p>
+        </div>
+        <div class="panel-card sr-details">
+          <div class="sr-controls">
+            <label>Воронка
+              <select id="sr-scope" class="select"></select>
+            </label>
+            <label>Разбивка по тегу
+              <select id="sr-category" class="select"></select>
+            </label>
+          </div>
+          <div id="sr-details"></div>
+        </div>
+      </div>
+
+      <div id="subtab-testing" class="tab-panel">
+        <div class="panel-card tst-head">
+          <h3 class="sr-title">Эффективность тестирования креативов</h3>
+          <p id="tst-subtitle" class="sr-subtitle"></p>
+        </div>
+        <div class="panel-card tst-total">
+          <span class="sr-pill" style="background:#dfeafd">ВСЕГО</span>
+          <div id="tst-kpis" class="tst-kpis"></div>
+        </div>
+        <div class="tst-grid">
+          <div class="tst-col">
+            <div class="panel-card">
+              <div class="tst-card-head"><h4>Результат по воронкам</h4><span class="hint">CPA считаем по всем затратам воронки</span></div>
+              <div id="tst-table"></div>
+            </div>
+            <div class="panel-card">
+              <div class="tst-card-head"><h4>Доля креативов, давших хотя бы одну покупку</h4><span class="hint">% от протестированных в воронке</span></div>
+              <div id="tst-chart" class="tst-chart"></div>
+            </div>
+          </div>
+          <div class="tst-col">
+            <div class="panel-card">
+              <div class="tst-pill tst-pill--green">ОТ ТЕСТА ДО ПОКУПКИ</div>
+              <div id="tst-funnel"></div>
+            </div>
+            <div class="panel-card">
+              <div class="tst-pill tst-pill--purple">ГЛАВНЫЕ ВЫВОДЫ</div>
+              <div id="tst-conclusions"></div>
+            </div>
+            <div class="panel-card">
+              <div class="tst-pill tst-pill--blue">КРЕАТИВЫ, КОТОРЫЕ ВЫДЕЛЯЮТСЯ</div>
+              <div id="tst-standout"></div>
+            </div>
+          </div>
+        </div>
+        <p id="tst-footnote" class="hint tst-footnote"></p>
+      </div>
+
+    </section>
+
     <section id="view-analytics" class="view" hidden>
       <div class="view__header">
         <h1>Аналитика</h1>
@@ -236,8 +335,6 @@
         <button type="button" class="tab" data-subtab="production">Design</button>
         <button type="button" class="tab" data-subtab="cp">CP</button>
         <button type="button" class="tab" data-subtab="ua">UA</button>
-        <button type="button" class="tab" data-subtab="sr">Success Rate</button>
-        <button type="button" class="tab" data-subtab="testing">Эффективность тестов</button>
       </div>
 
       <div id="subtab-creatives" class="tab-panel is-active">
@@ -502,72 +599,6 @@
             <div id="production-funnel-bars" class="bar-list"></div>
           </div>
         </div>
-      </div>
-
-      <div id="subtab-sr" class="tab-panel">
-        <div class="panel-card sr-board-card">
-          <h3 class="sr-title">Розподіл статусів по воронках</h3>
-          <p id="sr-subtitle" class="sr-subtitle"></p>
-          <div class="sr-legend">
-            <span><i style="background:#c9d0d6"></i>Ниже Promising+</span>
-            <span><i style="background:#f4c15d"></i>Promising</span>
-            <span><i style="background:#6bb5a0"></i>Test</span>
-            <span><i style="background:#5b82d6"></i>Scale</span>
-            <span><i style="background:#8b4be0"></i>Alpha</span>
-          </div>
-          <div id="sr-board"></div>
-          <div id="sr-banner" class="sr-banner"></div>
-          <p id="sr-banner-note" class="sr-banner-note"></p>
-        </div>
-        <div class="panel-card sr-details">
-          <div class="sr-controls">
-            <label>Воронка
-              <select id="sr-scope" class="select"></select>
-            </label>
-            <label>Разбивка по тегу
-              <select id="sr-category" class="select"></select>
-            </label>
-          </div>
-          <div id="sr-details"></div>
-        </div>
-      </div>
-
-      <div id="subtab-testing" class="tab-panel">
-        <div class="panel-card tst-head">
-          <h3 class="sr-title">Эффективность тестирования креативов</h3>
-          <p id="tst-subtitle" class="sr-subtitle"></p>
-        </div>
-        <div class="panel-card tst-total">
-          <span class="sr-pill" style="background:#dfeafd">ВСЕГО</span>
-          <div id="tst-kpis" class="tst-kpis"></div>
-        </div>
-        <div class="tst-grid">
-          <div class="tst-col">
-            <div class="panel-card">
-              <div class="tst-card-head"><h4>Результат по воронкам</h4><span class="hint">CPA считаем по всем затратам воронки</span></div>
-              <div id="tst-table"></div>
-            </div>
-            <div class="panel-card">
-              <div class="tst-card-head"><h4>Доля креативов, давших хотя бы одну покупку</h4><span class="hint">% от протестированных в воронке</span></div>
-              <div id="tst-chart" class="tst-chart"></div>
-            </div>
-          </div>
-          <div class="tst-col">
-            <div class="panel-card">
-              <div class="tst-pill tst-pill--green">ОТ ТЕСТА ДО ПОКУПКИ</div>
-              <div id="tst-funnel"></div>
-            </div>
-            <div class="panel-card">
-              <div class="tst-pill tst-pill--purple">ГЛАВНЫЕ ВЫВОДЫ</div>
-              <div id="tst-conclusions"></div>
-            </div>
-            <div class="panel-card">
-              <div class="tst-pill tst-pill--blue">КРЕАТИВЫ, КОТОРЫЕ ВЫДЕЛЯЮТСЯ</div>
-              <div id="tst-standout"></div>
-            </div>
-          </div>
-        </div>
-        <p id="tst-footnote" class="hint tst-footnote"></p>
       </div>
 
       <div id="subtab-cp" class="tab-panel">

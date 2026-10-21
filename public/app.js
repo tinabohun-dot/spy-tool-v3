@@ -48,9 +48,11 @@ $all('.side-nav__item').forEach((btn) => {
     $('#view-library').hidden = view !== 'library';
     $('#view-jobs').hidden = view !== 'jobs';
     $('#view-analytics').hidden = view !== 'analytics';
+    $('#view-sr').hidden = view !== 'sr';
     $('#view-brand').hidden = true;
     if (view === 'jobs') startJobsPolling(); else stopJobsPolling();
     if (view === 'analytics') initAnalyticsView();
+    if (view === 'sr') initSrView();
   });
 });
 
@@ -805,8 +807,6 @@ function loadActiveSubtab() {
   if (analyticsSubtab === 'production') return loadProduction(since, until);
   if (analyticsSubtab === 'cp') return loadCp(since, until);
   if (analyticsSubtab === 'ua') return loadUa(since, until);
-  if (analyticsSubtab === 'sr') return loadSuccessRate(since, until);
-  if (analyticsSubtab === 'testing') return loadTesting(since, until);
 }
 
 $('#analytics-subtabs').addEventListener('click', (e) => {
@@ -1501,6 +1501,63 @@ async function loadUa(since, until) {
   }
 }
 
+// ---------- Success Rate (отдельный раздел в левом меню) ----------
+let srInited = false;
+let srSubtab = 'sr';
+
+function setSrPeriod(days) {
+  const today = new Date();
+  $('#sr-until').value = today.toISOString().slice(0, 10);
+  $('#sr-since').value = new Date(today.getTime() - days * 86400000).toISOString().slice(0, 10);
+  $all('#sr-period-presets .segmented__btn').forEach((b) => b.classList.toggle('is-active', +b.dataset.days === days));
+}
+
+function loadSrActiveSubtab() {
+  const since = $('#sr-since').value;
+  const until = $('#sr-until').value;
+  if (srSubtab === 'sr') return loadSuccessRate(since, until);
+  if (srSubtab === 'testing') return loadTesting(since, until);
+}
+
+function initSrView() {
+  if (srInited) return;
+  srInited = true;
+  setSrPeriod(0);
+  loadSrActiveSubtab();
+}
+
+$('#sr-subtabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.tab');
+  if (!btn) return;
+  srSubtab = btn.dataset.subtab;
+  $all('#sr-subtabs .tab').forEach((b) => b.classList.toggle('is-active', b === btn));
+  $all('#view-sr .tab-panel').forEach((p) => p.classList.toggle('is-active', p.id === `subtab-${srSubtab}`));
+  loadSrActiveSubtab();
+});
+
+$('#sr-period-presets').addEventListener('click', (e) => {
+  const btn = e.target.closest('.segmented__btn');
+  if (!btn || btn.id === 'sr-closed-week-btn') return;
+  setSrPeriod(+btn.dataset.days);
+  loadSrActiveSubtab();
+});
+
+$('#sr-closed-week-btn').addEventListener('click', () => {
+  const today = new Date();
+  const daysSinceMonday = (today.getDay() + 6) % 7;
+  const thisMonday = new Date(today.getTime() - daysSinceMonday * 86400000);
+  $('#sr-since').value = new Date(thisMonday.getTime() - 7 * 86400000).toISOString().slice(0, 10);
+  $('#sr-until').value = new Date(thisMonday.getTime() - 86400000).toISOString().slice(0, 10);
+  $all('#sr-period-presets .segmented__btn').forEach((b) => b.classList.toggle('is-active', b.id === 'sr-closed-week-btn'));
+  loadSrActiveSubtab();
+});
+
+$('#sr-filters').addEventListener('submit', (e) => {
+  e.preventDefault();
+  $all('#sr-period-presets .segmented__btn').forEach((b) => b.classList.remove('is-active'));
+  loadSrActiveSubtab();
+});
+
 // ---------- Success Rate ----------
 const SR_COLORS = { below: '#c9d0d6', Promising: '#f4c15d', Test: '#6bb5a0', Scale: '#5b82d6', Alpha: '#8b4be0' };
 const SR_PILLS = ['#dfeafd', '#dff3e8', '#fdf0cf', '#fae1ec', '#e3ebf6', '#ece3f8'];
@@ -1618,13 +1675,13 @@ $('#sr-scope').addEventListener('change', renderSrDetails);
 $('#sr-category').addEventListener('change', renderSrDetails);
 
 async function loadSuccessRate(since, until) {
-  $('#analytics-status').textContent = 'Загружаю...';
+  $('#sr-status').textContent = 'Загружаю...';
   try {
     const data = await fetchJson(`/api/analytics/success-rate?${new URLSearchParams({ since, until })}`);
-    $('#analytics-status').textContent = '';
+    $('#sr-status').textContent = '';
     renderSuccessRate(data);
   } catch (err) {
-    $('#analytics-status').textContent = 'Ошибка: ' + err.message;
+    $('#sr-status').textContent = 'Ошибка: ' + err.message;
   }
 }
 
@@ -1704,13 +1761,13 @@ function renderTesting(d) {
 }
 
 async function loadTesting(since, until) {
-  $('#analytics-status').textContent = 'Загружаю...';
+  $('#sr-status').textContent = 'Загружаю...';
   try {
     const data = await fetchJson(`/api/analytics/testing?${new URLSearchParams({ since, until })}`);
-    $('#analytics-status').textContent = '';
+    $('#sr-status').textContent = '';
     renderTesting(data);
   } catch (err) {
-    $('#analytics-status').textContent = 'Ошибка: ' + err.message;
+    $('#sr-status').textContent = 'Ошибка: ' + err.message;
   }
 }
 
