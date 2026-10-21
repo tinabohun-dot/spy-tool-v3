@@ -1698,6 +1698,48 @@ function plural(n, one, few, many) {
   return many;
 }
 
+let tstData = null;
+let tstPeopleMode = 'byDesigner';
+
+function renderTstPeople() {
+  if (!tstData) return;
+  const people = tstData[tstPeopleMode] || [];
+  if (!people.length) { $('#tst-people').innerHTML = '<p class="hint">Нет данных</p>'; return; }
+  const maxPct = Math.max(0.01, ...people.map((p) => p.buyersPct));
+  const label = (n) => (n === 'Unknown' ? 'Нет в Airtable' : srEsc(n));
+  $('#tst-people').innerHTML = `<div class="fmt-table-wrap"><table class="table tst-table"><thead><tr>
+    <th>${tstPeopleMode === 'byCp' ? 'CP' : 'Дизайнер'}</th><th>Креативы</th><th>Затраты</th><th>Покупки</th><th>% всех покупок</th><th>CPA</th>
+    <th>Дали покупку</th><th></th><th>SR Promising+</th></tr></thead><tbody>${people.map((p, i) => `
+    <tr class="tst-person" data-i="${i}">
+      <td><strong>${label(p.name)}</strong></td><td>${p.creatives}</td><td>${srMoney(p.spend)}</td><td>${p.purchases}</td>
+      <td>${srPct(p.purchasesShare)}</td><td>${p.cpa ? '$' + Math.round(p.cpa) : '—'}</td>
+      <td class="tst-green"><strong>${p.buyers} из ${p.creatives} · ${srPct(p.buyersPct)}</strong></td>
+      <td class="tst-person__bar"><span style="width:${(p.buyersPct / maxPct) * 100}%"></span></td>
+      <td>${p.success} из ${p.creatives} · ${srPct(p.sr)}</td>
+    </tr>
+    <tr class="tst-person__list" data-for="${i}" hidden><td colspan="9">${p.list.map((c) => {
+      const gc = GRADE_BADGE_COLORS[c.grade];
+      return `<div class="tst-person__item"><strong>${c.taskId ? '№' + c.taskId : srEsc(c.name)}</strong>
+        <span class="grade-badge" style="background:${gc.bg};color:${gc.color}">${c.grade}</span>
+        <span>${c.purchases} ${plural(c.purchases, 'покупка', 'покупки', 'покупок')} · CPA ${c.cpa ? '$' + Math.round(c.cpa) : '—'} · ${srMoney(c.spend)}</span></div>`;
+    }).join('')}</td></tr>`).join('')}</tbody></table></div>`;
+}
+
+$('#tst-people').addEventListener('click', (e) => {
+  const row = e.target.closest('.tst-person');
+  if (!row) return;
+  const list = $('#tst-people').querySelector(`.tst-person__list[data-for="${row.dataset.i}"]`);
+  if (list) list.hidden = !list.hidden;
+});
+
+$('#tst-people-mode').addEventListener('click', (e) => {
+  const btn = e.target.closest('.segmented__btn');
+  if (!btn) return;
+  tstPeopleMode = btn.dataset.mode;
+  $all('#tst-people-mode .segmented__btn').forEach((b) => b.classList.toggle('is-active', b === btn));
+  renderTstPeople();
+});
+
 function renderTesting(d) {
   const t = d.total;
   $('#tst-subtitle').textContent = `${t.creatives} КРЕАТИВОВ · ОТ ТЕСТА ДО ПОКУПКИ`;
@@ -1759,6 +1801,9 @@ function renderTesting(d) {
       <strong class="tst-stand__id" style="color:${i % 2 ? '#7a4fd6' : '#e8793a'}">${c.taskId ? '№' + c.taskId : srEsc(c.name)}</strong>
       <span>${c.grade !== 'Bedolaga' ? c.grade + ' · ' : ''}${c.purchases} ${plural(c.purchases, 'покупка', 'покупки', 'покупок')} · CPA ${c.cpa ? '$' + (c.cpa < 100 ? c.cpa.toFixed(1).replace(/\.0$/, '') : Math.round(c.cpa)) : '—'}${c.grade === 'Bedolaga' ? ' · Bedolaga' : ''}</span>
     </div>`).join('') || '<p class="hint">Пока нет креативов с покупками</p>';
+
+  tstData = d;
+  renderTstPeople();
 
   $('#tst-footnote').textContent = d.zeroSpend ? `Не учтено креативов с $0 затрат: ${d.zeroSpend}.` : '';
 }

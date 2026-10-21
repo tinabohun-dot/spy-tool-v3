@@ -150,6 +150,38 @@ async function testingReport(since, until) {
     return { taskId: m ? m[1] : null, name: c.name, grade: c.grade, purchases: c.purchases, cpa: c.cpa, spend: c.spend };
   };
 
+  // Дизайнер и CP креатива — из Airtable по Task ID (начало названия).
+  const tasksByTaskId = {};
+  try {
+    const { tasks } = await airtable.loadTasks();
+    for (const t of tasks) if (t.taskId != null) tasksByTaskId[String(t.taskId).trim()] = t;
+  } catch (err) {
+    console.warn('[testing] Airtable недоступен, дизайнеры/CP будут Unknown:', err.message);
+  }
+  const personOf = (c, field) => {
+    const m = String(c.name || '').trim().match(/^(\d+)/);
+    const t = m ? tasksByTaskId[m[1]] : null;
+    return (t && t[field]) || 'Unknown';
+  };
+  const byPerson = (field) => {
+    const names = [...new Set(creatives.map((c) => personOf(c, field)))];
+    return names.map((name) => {
+      const subset = creatives.filter((c) => personOf(c, field) === name);
+      const pSpend = sum(subset, (c) => c.spend);
+      const pPurchases = sum(subset, (c) => c.purchases);
+      const pBuyers = subset.filter((c) => c.purchases > 0).length;
+      const pSuccess = subset.filter((c) => SUCCESS_GRADES.includes(c.grade)).length;
+      return {
+        name, creatives: subset.length, spend: pSpend, purchases: pPurchases,
+        cpa: pPurchases > 0 ? pSpend / pPurchases : null,
+        buyers: pBuyers, buyersPct: ratio(pBuyers, subset.length),
+        success: pSuccess, sr: ratio(pSuccess, subset.length),
+        purchasesShare: ratio(pPurchases, purchases),
+        list: subset.slice().sort((a, b) => b.purchases - a.purchases || b.spend - a.spend).map(pack)
+      };
+    }).sort((a, b) => b.creatives - a.creatives);
+  };
+
   const spend = sum(creatives, (c) => c.spend);
   const purchases = sum(creatives, (c) => c.purchases);
   const buyers = creatives.filter((c) => c.purchases > 0);
@@ -185,6 +217,8 @@ async function testingReport(since, until) {
       wastedSpend, wastedPct: ratio(wastedSpend, spend)
     },
     funnels,
+    byDesigner: byPerson('designer'),
+    byCp: byPerson('cp'),
     standout,
     zeroSpend
   };

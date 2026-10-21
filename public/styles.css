@@ -403,3 +403,11 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
 .tst-grid .panel-card { min-width: 0; }
 .tst-kpi__value { white-space: nowrap; }
 .tst-table th, .tst-table td { white-space: nowrap; }
+
+.tst-people { margin-top: 14px; }
+.tst-person { cursor: pointer; }
+.tst-person:hover { background: #f4f7f6; }
+.tst-person__bar { width: 120px; }
+.tst-person__bar span { display: block; height: 8px; border-radius: 4px; background: #0b6b5c; }
+.tst-person__list td { background: #fafbfa; padding: 8px 14px; white-space: normal; }
+.tst-person__item { display: flex; align-items: center; gap: 10px; padding: 3px 0; font-size: 13px; }
