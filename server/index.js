@@ -267,6 +267,18 @@ app.get('/api/analytics/ua', async (req, res) => {
 });
 
 // Formats: формат/воронка (по своим креативам, без превью — быстрее) + платформы.
+// Success Rate по воронкам и тегам (расчёт как в личном скрипте).
+app.get('/api/analytics/success-rate', async (req, res) => {
+  try {
+    const { since, until } = req.query;
+    if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until' });
+    res.json(await require('./successRate').successRateReport(since, until));
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 app.get('/api/analytics/formats', async (req, res) => {
   try {
     const { since, until } = req.query;

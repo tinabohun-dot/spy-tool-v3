@@ -236,6 +236,7 @@
         <button type="button" class="tab" data-subtab="production">Design</button>
         <button type="button" class="tab" data-subtab="cp">CP</button>
         <button type="button" class="tab" data-subtab="ua">UA</button>
+        <button type="button" class="tab" data-subtab="sr">Success Rate</button>
       </div>
 
       <div id="subtab-creatives" class="tab-panel is-active">
@@ -499,6 +500,34 @@
             <h3>По воронкам</h3>
             <div id="production-funnel-bars" class="bar-list"></div>
           </div>
+        </div>
+      </div>
+
+      <div id="subtab-sr" class="tab-panel">
+        <div class="panel-card sr-board-card">
+          <h3 class="sr-title">Розподіл статусів по воронках</h3>
+          <p id="sr-subtitle" class="sr-subtitle"></p>
+          <div class="sr-legend">
+            <span><i style="background:#c9d0d6"></i>Ниже Promising+</span>
+            <span><i style="background:#f4c15d"></i>Promising</span>
+            <span><i style="background:#6bb5a0"></i>Test</span>
+            <span><i style="background:#5b82d6"></i>Scale</span>
+            <span><i style="background:#8b4be0"></i>Alpha</span>
+          </div>
+          <div id="sr-board"></div>
+          <div id="sr-banner" class="sr-banner"></div>
+          <p id="sr-banner-note" class="sr-banner-note"></p>
+        </div>
+        <div class="panel-card sr-details">
+          <div class="sr-controls">
+            <label>Воронка
+              <select id="sr-scope" class="select"></select>
+            </label>
+            <label>Разбивка по тегу
+              <select id="sr-category" class="select"></select>
+            </label>
+          </div>
+          <div id="sr-details"></div>
         </div>
       </div>
 

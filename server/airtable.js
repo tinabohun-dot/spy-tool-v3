@@ -52,6 +52,25 @@ function pick(fields, whenMap, stageLabel) {
   return key ? fields[key] || null : null;
 }
 
+// Теги креатива для разбивки Success Rate по Flow / Concept / Theme и т.д.
+// (те же поля, что в личном скрипте — AIRTABLE_FIELD_MAP). Значение-массив
+// (lookup/multi-select) берём по первому элементу.
+const TAG_FIELDS = {
+  Flow: 'Flow', ConceptType: 'Concept Type', Concept: 'Concept', Theme: 'Theme',
+  Pain: 'Pains', ModelType: 'Model type', Visual: 'Visual', VisualAngle: 'Visual angle.',
+  Gender: 'Gender', Audience: 'Audience', Source: 'Source'
+};
+function readTags(f) {
+  const tags = {};
+  for (const [key, field] of Object.entries(TAG_FIELDS)) {
+    let v = f[field];
+    if (Array.isArray(v)) v = v[0];
+    if (v && typeof v === 'object') v = v.name || null;
+    tags[key] = v || null;
+  }
+  return tags;
+}
+
 let cache = null; // { at, tasks, whenMap }
 async function loadTasks() {
   if (cache && Date.now() - cache.at < CACHE_TTL_MS) return cache;
@@ -72,6 +91,7 @@ async function loadTasks() {
       created: f['Created'] || null,
       whenInProgress: pick(f, whenMap, 'In Progress'),
       whenToTest: pick(f, whenMap, 'To Test'),
+      tags: readTags(f),
       whenToDo: pick(f, whenMap, 'To Do') || pick(f, whenMap, 'To do'),
       whenSentUA: pick(f, whenMap, 'Sent UA') || pick(f, whenMap, 'Send UA')
     };

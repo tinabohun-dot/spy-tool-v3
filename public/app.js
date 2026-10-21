@@ -805,6 +805,7 @@ function loadActiveSubtab() {
   if (analyticsSubtab === 'production') return loadProduction(since, until);
   if (analyticsSubtab === 'cp') return loadCp(since, until);
   if (analyticsSubtab === 'ua') return loadUa(since, until);
+  if (analyticsSubtab === 'sr') return loadSuccessRate(since, until);
 }
 
 $('#analytics-subtabs').addEventListener('click', (e) => {
@@ -1494,6 +1495,133 @@ async function loadUa(since, until) {
     const data = await fetchJson(`/api/analytics/ua?${new URLSearchParams({ since, until })}`);
     $('#analytics-status').textContent = '';
     renderUaReport(data);
+  } catch (err) {
+    $('#analytics-status').textContent = 'Ошибка: ' + err.message;
+  }
+}
+
+// ---------- Success Rate ----------
+const SR_COLORS = { below: '#c9d0d6', Promising: '#f4c15d', Test: '#6bb5a0', Scale: '#5b82d6', Alpha: '#8b4be0' };
+const SR_PILLS = ['#dfeafd', '#dff3e8', '#fdf0cf', '#fae1ec', '#e3ebf6', '#ece3f8'];
+let srData = null;
+
+function srEsc(v) {
+  return String(v ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+const srPct = (x, d = 1) => (x * 100).toFixed(d) + '%';
+const srMoney = (x) => '$' + Math.round(x).toLocaleString('ru-RU');
+const srCpa = (x) => (x ? '$' + Math.round(x) : '—');
+const srTask = (t) => (t.taskId ? '№' + t.taskId : srEsc(t.name));
+
+function srTopLabel(row, isOverall) {
+  if (isOverall) {
+    const byGrade = {};
+    for (const t of row.top) (byGrade[t.grade] ||= []).push(srTask(t));
+    return ['Alpha', 'Scale', 'Test', 'Promising'].filter((g) => byGrade[g])
+      .map((g) => `${g} ${byGrade[g].join(' і ')}`).join(' • ');
+  }
+  if (row.top.length) {
+    return row.top.slice(0, 4).map((t) => `${t.grade} ${srTask(t)} · ${t.purchases} покупок · CPA ${srCpa(t.cpa)}`).join('  ·  ');
+  }
+  return row.bestBelow.map((t) => `${srTask(t)} · ${t.purchases} покупок · CPA ${srCpa(t.cpa)}`).join('  ·  ');
+}
+
+function srRowHtml(row, label, pill, isOverall) {
+  const g = Object.fromEntries(row.grades.map((x) => [x.grade, x]));
+  const aboveCount = row.success.count;
+  const segs = [
+    { key: 'below', pct: g.Bedolaga.pct, count: g.Bedolaga.count },
+    ...['Promising', 'Test', 'Scale', 'Alpha'].map((k) => ({ key: k, pct: g[k].pct, count: g[k].count }))
+  ].filter((s) => s.count > 0);
+  const bar = segs.map((s) => `<span class="sr-seg" style="width:${s.pct * 100}%;background:${SR_COLORS[s.key]}" title="${s.key === 'below' ? 'Bedolaga' : s.key}: ${s.count}">${s.key === 'below' ? `${srPct(s.pct)} (${s.count})` : ''}</span>`).join('');
+  return `
+    <div class="sr-row">
+      <div class="sr-row__left">
+        <span class="sr-pill" style="background:${pill}">${srEsc(label)}</span>
+        <div class="sr-row__meta">Всего: ${row.total} &nbsp;•&nbsp; Promising+: ${aboveCount}</div>
+      </div>
+      <div class="sr-row__mid">
+        <div class="sr-row__top">
+          <span class="sr-row__tops">${srTopLabel(row, isOverall)}</span>
+          ${aboveCount ? `<span class="sr-row__abovepct">${srPct(row.success.sr)} (${aboveCount})</span>` : ''}
+        </div>
+        <div class="sr-bar">${bar || '<span class="sr-seg sr-seg--empty">нет данных</span>'}</div>
+      </div>
+      <div class="sr-row__right">
+        <div class="sr-big">${srPct(row.success.sr)}</div>
+        <div class="sr-big__label">Success Rate</div>
+      </div>
+    </div>`;
+}
+
+function renderSuccessRate(data) {
+  srData = data;
+  const o = data.overall;
+  $('#sr-subtitle').innerHTML = `<span>${o.total} КРЕАТИВОВ</span> &nbsp;•&nbsp; <span class="sr-subtitle__b">SUCCESS RATE ПО ВОРОНКАМ</span>`;
+
+  $('#sr-board').innerHTML = [
+    srRowHtml(o, 'Загалом', SR_PILLS[0], true),
+    ...data.funnels.map((f, i) => srRowHtml(f, f.name, SR_PILLS[(i + 1) % SR_PILLS.length], false))
+  ].join('');
+
+  const tops = o.top.map(srTask);
+  const list = tops.length > 1 ? tops.slice(0, -1).join(', ') + ' та ' + tops[tops.length - 1] : tops.join('');
+  $('#sr-banner').textContent = tops.length
+    ? `${o.success.count} ИЗ ${o.total} КРЕАТИВОВ ДОСТИГЛИ PROMISING+: ${list}`
+    : `${o.total} КРЕАТИВОВ — НИКТО ПОКА НЕ ДОСТИГ PROMISING+`;
+  const best = data.funnels.filter((f) => f.success.count).map((f) => `${f.name}: SR ${srPct(f.success.sr)}`).join('. ');
+  const lead = o.top[0] ? `№${o.top[0].taskId} лидирует: ${o.top[0].purchases} покупок, CPA ${srCpa(o.top[0].cpa)}.` : '';
+  $('#sr-banner-note').textContent = [best, lead].filter(Boolean).join(' ') +
+    (data.withoutAirtable ? `  Креативов без записи в Airtable (теги Unknown): ${data.withoutAirtable}.` : '');
+
+  const scope = $('#sr-scope');
+  const prevScope = scope.value;
+  scope.innerHTML = `<option value="">Загалом (все воронки)</option>` + data.funnels.map((f) => `<option value="${srEsc(f.name)}">${srEsc(f.name)}</option>`).join('');
+  if ([...scope.options].some((op) => op.value === prevScope)) scope.value = prevScope;
+
+  const cat = $('#sr-category');
+  const prevCat = cat.value;
+  cat.innerHTML = data.categories.map((c) => `<option value="${c.key}">${c.label}</option>`).join('');
+  if ([...cat.options].some((op) => op.value === prevCat)) cat.value = prevCat;
+
+  renderSrDetails();
+}
+
+function renderSrDetails() {
+  if (!srData) return;
+  const scopeName = $('#sr-scope').value;
+  const key = $('#sr-category').value;
+  const block = scopeName ? srData.funnels.find((f) => f.name === scopeName) : srData.overall;
+  if (!block) return;
+  const dims = block.dimensions[key];
+
+  const gradeRows = block.grades.map((g) => `<tr><td><span class="grade-badge" style="background:${GRADE_BADGE_COLORS[g.grade].bg};color:${GRADE_BADGE_COLORS[g.grade].color}">${g.grade}</span></td><td>${g.count}</td><td>${srPct(g.pct)}</td><td>${srMoney(g.spend)}</td><td>${srPct(g.spendPct)}</td></tr>`).join('');
+  const gradeTable = `<table class="table"><thead><tr><th>Grade</th><th>Count</th><th>% крео</th><th>Spend</th><th>% спенда</th></tr></thead><tbody>${gradeRows}
+    <tr class="sr-total"><td>✅ Success Rate (P+T+S+A)</td><td>${block.success.count}</td><td>${srPct(block.success.sr)}</td><td>${srMoney(block.success.spend)}</td><td>${srPct(block.success.srSpend)}</td></tr></tbody></table>`;
+
+  const convRows = block.conversions.map((c) => `<tr><td>${c.label}</td><td>${c.from}</td><td>${c.to}</td><td>${srPct(c.pct)}</td></tr>`).join('');
+  const convTable = `<table class="table"><thead><tr><th>Переход</th><th>Достигли этапа</th><th>Дошли дальше</th><th>% конверсии</th></tr></thead><tbody>${convRows}</tbody></table>`;
+
+  let dimTable = '<p class="hint">Нет данных</p>';
+  if (dims && dims.length) {
+    const rows = dims.map((d) => `<tr><td><strong>${srEsc(d.value)}</strong></td><td>${d.total}</td><td>${d.Promising}</td><td>${d.Test}</td><td>${d.Scale}</td><td>${d.Alpha}</td><td>${d.success}</td><td>${srPct(d.sr)}</td><td>${srMoney(d.spend)}</td><td>${srPct(d.srSpend)}</td><td>${srPct(d.promisingToTest, 0)}</td><td>${srPct(d.testToScale, 0)}</td><td>${srPct(d.scaleToAlpha, 0)}</td></tr>`).join('');
+    dimTable = `<div class="fmt-table-wrap"><table class="table analytics-table"><thead><tr><th>${srEsc(key)}</th><th>Total</th><th>Promising</th><th>Test</th><th>Scale</th><th>Alpha</th><th>Success</th><th>SR (% крео)</th><th>Spend</th><th>SR (% спенда)</th><th>P→T</th><th>T→S</th><th>S→A</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  }
+
+  $('#sr-details').innerHTML = `
+    <div class="sr-details__grid"><div><h4>Розбивка по грейдах</h4>${gradeTable}</div><div><h4>Конверсия между этапами</h4>${convTable}</div></div>
+    <h4>По тегу: ${srEsc(key)}</h4>${dimTable}`;
+}
+
+$('#sr-scope').addEventListener('change', renderSrDetails);
+$('#sr-category').addEventListener('change', renderSrDetails);
+
+async function loadSuccessRate(since, until) {
+  $('#analytics-status').textContent = 'Загружаю...';
+  try {
+    const data = await fetchJson(`/api/analytics/success-rate?${new URLSearchParams({ since, until })}`);
+    $('#analytics-status').textContent = '';
+    renderSuccessRate(data);
   } catch (err) {
     $('#analytics-status').textContent = 'Ошибка: ' + err.message;
   }

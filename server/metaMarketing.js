@@ -300,7 +300,8 @@ function groupRowsByCreative(allRows) {
     if (!groups[key]) {
       const copy = {
         ...row, _mergedCount: 1, _accountNames: [row._accountName], _campaignNames: [row.campaign_name],
-        _prevPlays: getVideoMetric(row.video_play_actions), _adIds: [row.ad_id]
+        _prevPlays: getVideoMetric(row.video_play_actions), _adIds: [row.ad_id],
+        _campaignSpend: { [row.campaign_name || '']: parseFloat(row.spend || 0) }
       };
       groups[key] = copy;
       order.push(key);
@@ -311,6 +312,8 @@ function groupRowsByCreative(allRows) {
     target._adIds.push(row.ad_id);
     if (!target._accountNames.includes(row._accountName)) target._accountNames.push(row._accountName);
     if (!target._campaignNames.includes(row.campaign_name)) target._campaignNames.push(row.campaign_name);
+    const cKey = row.campaign_name || '';
+    target._campaignSpend[cKey] = (target._campaignSpend[cKey] || 0) + parseFloat(row.spend || 0);
     if (row.ad_name.length < target.ad_name.length) target.ad_name = row.ad_name;
     for (const f of ['impressions', 'reach', 'clicks', 'unique_clicks', 'spend']) {
       target[f] = String((parseFloat(target[f] || 0) + parseFloat(row[f] || 0)));
@@ -356,6 +359,15 @@ function getGrade(purchases, cpa) {
   return 'Bedolaga';
 }
 
+// Кампания (а значит и воронка) креатива для Success Rate — та, где он
+// потратил больше всего денег, как в личном скрипте пользователя.
+function primaryCampaignName(row) {
+  const spendBy = row._campaignSpend;
+  if (!spendBy) return row.campaign_name;
+  const best = Object.keys(spendBy).sort((a, b) => spendBy[b] - spendBy[a])[0];
+  return best || row.campaign_name;
+}
+
 function buildCreativeEntry(row) {
   const impressions = parseInt(row.impressions || 0, 10);
   const reach = parseInt(row.reach || 0, 10);
@@ -395,6 +407,7 @@ function buildCreativeEntry(row) {
     // чего в "Все аккаунты" воронка могла показывать не ту, что видна при
     // фильтре по конкретному аккаунту. Собираем воронки со всех объединённых
     // кампаний и показываем все различающиеся.
+    primaryFunnel: getFunnelFromCampaign(primaryCampaignName(row)),
     funnel: [...new Set((row._campaignNames || [row.campaign_name]).map(getFunnelFromCampaign).filter(Boolean))].join(' / '),
     spend,
     impressions,
