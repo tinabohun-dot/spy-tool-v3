@@ -307,8 +307,15 @@ app.get('/api/analytics/retention', async (req, res) => {
     const rows = metaMarketing.filterRowsByCampaignMode(rawRows, req.query.campaignMode);
     const creatives = metaMarketing.groupRowsByCreative(rows).map(metaMarketing.buildCreativeEntry)
       .filter((c) => c.type === 'Video' && c.impressions >= 500 && c.videoPlays > 0);
-    const [curves] = await Promise.all([curvesPromise, metaMarketing.attachPreviews(creatives)]);
-    await metaMarketing.attachVideoLengths(creatives);
+    // Длительность видео — с Google Drive (по названию креатива), параллельно с превью.
+    const googleDrive = require('./googleDrive');
+    const lengthsPromise = (async () => {
+      const queue = creatives.slice();
+      await Promise.all(Array.from({ length: 6 }, async () => {
+        while (queue.length) { const c = queue.shift(); c.videoLength = await googleDrive.findVideoDurationSec(c.name); }
+      }));
+    })();
+    const [curves] = await Promise.all([curvesPromise, metaMarketing.attachPreviews(creatives), lengthsPromise]);
     const curveFor = (c) => {
       const ids = (c.adIds || [c.adId]).map((id) => curves[id]).filter((x) => x && x.curve);
       if (!ids.length) return { curve: null, thru15: 0 };
@@ -319,7 +326,6 @@ app.get('/api/analytics/retention', async (req, res) => {
     };
     res.json({
       since, until,
-      debug: req.query.debug ? metaMarketing.attachVideoLengths.lastDebug : undefined,
       creatives: creatives.map((c) => ({
         adId: c.adId, videoLength: c.videoLength ?? null, name: c.name, funnel: c.primaryFunnel || 'Другое', grade: c.grade, previewUrl: c.previewUrl,
         spend: c.spend, impressions: c.impressions, views3s: c.videoViews3s || 0, plays: c.videoPlays,

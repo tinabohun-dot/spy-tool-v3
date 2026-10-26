@@ -111,4 +111,32 @@ async function findFileLinkByName(creativeName) {
   }
 }
 
-module.exports = { getAuthUrl, exchangeCodeForTokens, findFileLinkByName };
+// Длительность видео (сек) по названию креатива — берём из метаданных файла
+// на Диске (Meta токену длину видео не отдаёт). Результат кэшируем по
+// префиксу "номер_тип_вариация".
+const durationCache = new Map();
+async function findVideoDurationSec(creativeName) {
+  if (!process.env.GOOGLE_REFRESH_TOKEN) return null;
+  const prefix = getMatchPrefix(creativeName);
+  if (!prefix) return null;
+  if (durationCache.has(prefix)) return durationCache.get(prefix);
+  let seconds = null;
+  try {
+    const token = await getAccessToken();
+    const url = new URL('https://www.googleapis.com/drive/v3/files');
+    url.searchParams.set('q', `name contains '${prefix}' and trashed = false`);
+    url.searchParams.set('fields', 'files(id,name,mimeType,videoMediaMetadata(durationMillis))');
+    url.searchParams.set('pageSize', '20');
+    const json = await (await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` } })).json();
+    if (json.error) { console.error('[drive] Ошибка поиска длительности:', json.error.message); return null; }
+    const file = (json.files || []).find((f) => f.name.startsWith(prefix) && f.videoMediaMetadata?.durationMillis);
+    if (file) seconds = Number(file.videoMediaMetadata.durationMillis) / 1000;
+  } catch (e) {
+    console.error('[drive] Не удалось получить длительность:', e.message);
+    return null;
+  }
+  durationCache.set(prefix, seconds);
+  return seconds;
+}
+
+module.exports = { getAuthUrl, exchangeCodeForTokens, findFileLinkByName, findVideoDurationSec };

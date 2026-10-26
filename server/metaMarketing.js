@@ -575,21 +575,16 @@ async function fetchAdInfo(adId) {
   let info;
   try {
     const url = new URL(`https://graph.facebook.com/${API_VERSION}/${adId}`);
-    url.searchParams.set('fields', 'creative{thumbnail_url,image_url,video_id,object_story_spec{video_data{video_id}},asset_feed_spec{videos{video_id}}},effective_status');
+    url.searchParams.set('fields', 'creative{thumbnail_url,image_url},effective_status');
     url.searchParams.set('access_token', token());
     const resp = await fetch(url.toString());
     const json = await resp.json();
     info = {
       previewUrl: json?.creative?.thumbnail_url || json?.creative?.image_url || null,
-      status: json?.effective_status || null,
-      videoId: json?.creative?.video_id
-        || json?.creative?.object_story_spec?.video_data?.video_id
-        || json?.creative?.asset_feed_spec?.videos?.[0]?.video_id
-        || null,
-      rawError: json?.error?.message || null
+      status: json?.effective_status || null
     };
   } catch {
-    info = { previewUrl: null, status: null, videoId: null };
+    info = { previewUrl: null, status: null };
   }
   adInfoCache.set(adId, info);
   return info;
@@ -642,76 +637,7 @@ async function attachPreviews(creatives) {
   return creatives;
 }
 
-// Длина видео (сек) — чтобы сравнивать среднее время просмотра с полной
-// длиной ролика. Берём video_id из креатива объявления и читаем length у
-// самого видео; результат кэшируем. Если Meta не отдаёт длину (нет доступа к
-// видео / динамический креатив), поле остаётся null.
-const videoLengthCache = new Map();
-async function fetchVideoLength(videoId) {
-  if (!videoId) return null;
-  if (videoLengthCache.has(videoId)) return videoLengthCache.get(videoId);
-  let length = null;
-  try {
-    const url = new URL(`https://graph.facebook.com/${API_VERSION}/${videoId}`);
-    url.searchParams.set('fields', 'length');
-    url.searchParams.set('access_token', token());
-    const json = await (await fetch(url.toString())).json();
-    length = typeof json?.length === 'number' ? json.length : null;
-    if (json?.error) videoLengthErrors.push(json.error.message);
-  } catch (err) { videoLengthErrors.push(err.message); }
-  videoLengthCache.set(videoId, length);
-  return length;
-}
-const videoLengthErrors = [];
-
-// Прямое чтение видео-объекта токену запрещено ((#10) нет прав), зато список
-// видео рекламного аккаунта (/advideos) читается — берём длины оттуда.
-// Видео в аккаунте много, поэтому листаем маленькими страницами и
-// останавливаемся, как только нашли все нужные; найденное копим в кэше.
-const accountVideoLengths = {};
-const advideosDone = new Set(); // аккаунты, которые уже прочитали до конца
-async function loadAccountVideoLengths(neededIds) {
-  const missing = () => neededIds.filter((id) => accountVideoLengths[id] == null);
-  if (!missing().length) return accountVideoLengths;
-  await Promise.all(Object.values(accounts()).map(async (accId) => {
-    if (advideosDone.has(accId)) return;
-    try {
-      const url = new URL(`https://graph.facebook.com/${API_VERSION}/${accId}/advideos`);
-      url.searchParams.set('fields', 'length');
-      url.searchParams.set('limit', '100');
-      url.searchParams.set('access_token', token());
-      let next = url.toString();
-      for (let page = 0; next && page < 80 && missing().length; page++) {
-        const json = await (await fetch(next)).json();
-        if (json.error) throw new Error(json.error.message);
-        for (const v of json.data || []) if (typeof v.length === 'number') accountVideoLengths[v.id] = v.length;
-        next = json.paging?.next || null;
-        if (!next) advideosDone.add(accId);
-      }
-    } catch (err) { videoLengthErrors.push('advideos: ' + err.message); }
-  }));
-  return accountVideoLengths;
-}
-
-// Требует предварительного attachPreviews (там подтягивается video_id).
-async function attachVideoLengths(creatives) {
-  const lengths = await loadAccountVideoLengths([...new Set(creatives.map((c) => adInfoCache.get(c.adId)?.videoId).filter(Boolean))]);
-  for (const c of creatives) {
-    const vid = adInfoCache.get(c.adId)?.videoId;
-    c.videoLength = (vid && lengths[vid]) || null;
-  }
-  attachVideoLengths.lastDebug = {
-    creatives: creatives.length,
-    withVideoId: creatives.filter((c) => adInfoCache.get(c.adId)?.videoId).length,
-    withLength: creatives.filter((c) => c.videoLength).length,
-    infoErrors: [...new Set(creatives.map((c) => adInfoCache.get(c.adId)?.rawError).filter(Boolean))].slice(0, 3),
-    lengthErrors: [...new Set(videoLengthErrors)].slice(0, 3)
-  };
-  return creatives;
-}
-
 module.exports = {
-  attachVideoLengths,
   accounts, fetchAllAccountsInsights, fetchAccountInsights,
   fetchAllAccountsInsightsBreakdown, fetchVideoCurves, fetchCountrySpend, filterRowsByCountries, collapseCountryRows,
   groupRowsByCreative, buildCreativeEntry, summarize, attachPreviews, filterRowsByCampaignMode,
