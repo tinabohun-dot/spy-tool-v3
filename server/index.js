@@ -295,6 +295,10 @@ app.get('/api/analytics/retention', async (req, res) => {
     const { since, until } = req.query;
     if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until' });
     const countries = String(req.query.countries || '').split(',').map((c) => c.trim().toUpperCase()).filter(Boolean);
+    // Кривая удержания по секундам грузится параллельно с основными данными;
+    // если Meta её не отдала — просто без неё.
+    const curvesPromise = metaMarketing.fetchVideoCurves(since, until, countries, req.query.countryMode)
+      .catch((err) => { console.warn('[retention] кривая удержания недоступна:', err.message); return {}; });
     const rawRows = countries.length
       ? metaMarketing.collapseCountryRows(metaMarketing.filterRowsByCountries(
           await metaMarketing.fetchAllAccountsInsightsBreakdown(since, until, ['country']), countries, req.query.countryMode
@@ -303,12 +307,7 @@ app.get('/api/analytics/retention', async (req, res) => {
     const rows = metaMarketing.filterRowsByCampaignMode(rawRows, req.query.campaignMode);
     const creatives = metaMarketing.groupRowsByCreative(rows).map(metaMarketing.buildCreativeEntry)
       .filter((c) => c.type === 'Video' && c.impressions >= 500 && c.videoPlays > 0);
-    await metaMarketing.attachPreviews(creatives);
-
-    // Кривая удержания по секундам — по возможности; если Meta не отдала, просто без неё.
-    let curves = {};
-    try { curves = await metaMarketing.fetchVideoCurves(since, until, countries, req.query.countryMode); }
-    catch (err) { console.warn('[retention] кривая удержания недоступна:', err.message); }
+    const [curves] = await Promise.all([curvesPromise, metaMarketing.attachPreviews(creatives)]);
     const curveFor = (c) => {
       const ids = (c.adIds || [c.adId]).map((id) => curves[id]).filter((x) => x && x.curve);
       if (!ids.length) return { curve: null, thru15: 0 };

@@ -1678,6 +1678,7 @@ function setRetPeriod(days) {
 function initRetView() {
   if (retInited) return;
   retInited = true;
+  $('#ret-sort').value = retSort.key;
   setRetPeriod(7);
   loadRetention();
 }
