@@ -1723,15 +1723,23 @@ function renderRetention() {
     .sort((a, b) => b[sortMap[sortKey]] - a[sortMap[sortKey]]);
 
   const sum = (k) => list.reduce((s, c) => s + (c[k] || 0), 0);
+  // [подпись, значение, от чего считаем процент]: Hook Rate и CTR — от показов,
+  // 25–100% — от Plays (так их считает Meta), LPV — от кликов, покупки — от LPV.
   const steps = [
-    ['Показы', sum('impressions')], ['3-сек. просмотры', sum('views3s')], ['Plays', sum('plays')],
-    ['25%', sum('p25')], ['50%', sum('p50')], ['75%', sum('p75')], ['100%', sum('p100')],
-    ['Клики по ссылке', sum('linkClicks')], ['Просмотры лендинга', sum('landingViews')], ['Покупки', sum('purchases')]
+    ['Показы', sum('impressions'), null],
+    ['Plays', sum('plays'), ['показов', sum('impressions')]],
+    ['3-сек. просмотры', sum('views3s'), ['показов', sum('impressions')]],
+    ['25%', sum('p25'), ['Plays', sum('plays')]],
+    ['50%', sum('p50'), ['Plays', sum('plays')]],
+    ['75%', sum('p75'), ['Plays', sum('plays')]],
+    ['100%', sum('p100'), ['Plays', sum('plays')]],
+    ['Клики по ссылке', sum('linkClicks'), ['показов', sum('impressions')]],
+    ['Просмотры лендинга', sum('landingViews'), ['кликов', sum('linkClicks')]],
+    ['Покупки', sum('purchases'), ['LPV', sum('landingViews')]]
   ];
-  $('#ret-funnel').innerHTML = `<div class="ret-funnel__title">Путь зрителя по ${list.length} креативам <span class="hint">— сколько зрителей доходит до каждого шага</span></div>
-    <div class="ret-steps">${steps.map(([label, v], i) => {
-      const prev = i === 0 ? null : (i === 7 ? steps[2][1] : steps[i - 1][1]);
-      const conv = prev ? ` <small>${srPct(v / prev, v / prev < 0.1 ? 2 : 1)}</small>` : '';
+  $('#ret-funnel').innerHTML = `<div class="ret-funnel__title">Путь зрителя по ${list.length} креативам <span class="hint">— процент под числом считается от указанной базы</span></div>
+    <div class="ret-steps">${steps.map(([label, v, base]) => {
+      const conv = base && base[1] ? `<small>${srPct(v / base[1], v / base[1] < 0.1 ? 2 : 1)} <em>от ${base[0]}</em></small>` : '';
       return `<div class="ret-step"><div class="ret-step__label">${label}</div><div class="ret-step__val">${Math.round(v).toLocaleString('ru-RU')}${conv}</div></div>`;
     }).join('')}</div>`;
 
