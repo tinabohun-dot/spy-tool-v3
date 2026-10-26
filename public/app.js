@@ -860,6 +860,10 @@ async function loadAnalytics(since, until) {
     const params = new URLSearchParams({ since, until });
     const campaignMode = $('#analytics-campaign-filter').value;
     if (campaignMode) params.set('campaignMode', campaignMode);
+    if (analyticsCountries.length) {
+      params.set('countries', analyticsCountries.join(','));
+      params.set('countryMode', analyticsCountryMode);
+    }
     const resp = await fetch(`/api/analytics?${params}`);
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || 'Ошибка запроса');
@@ -916,6 +920,89 @@ $('#analytics-account-chips').addEventListener('click', (e) => {
 
 $('#analytics-grade-filter').addEventListener('change', (e) => { analyticsGradeFilter = e.target.value; renderAnalyticsView(); });
 $('#analytics-type-filter').addEventListener('change', (e) => { analyticsTypeFilter = e.target.value; renderAnalyticsView(); });
+// ---------- Фильтр по странам (include / exclude) ----------
+let analyticsCountries = [];
+let analyticsCountryMode = 'include';
+let countryPending = new Set();
+let countryOptions = { key: null, list: [] };
+let regionNames = null;
+try { regionNames = new Intl.DisplayNames(['ru'], { type: 'region' }); } catch (e) { /* без названий — покажем коды */ }
+
+function countryName(code) {
+  try { return (regionNames && regionNames.of(code)) || code; } catch (e) { return code; }
+}
+function countryFlag(code) {
+  if (!/^[A-Z]{2}$/.test(code)) return '🏳️';
+  return String.fromCodePoint(...[...code].map((c) => 0x1F1E6 + c.charCodeAt(0) - 65));
+}
+
+function updateCountryLabel() {
+  const n = analyticsCountries.length;
+  $('#country-toggle').textContent = n ? `🌍 выбрано: ${n} ▴` : '🌍 все страны ▴';
+  $('#country-toggle').classList.toggle('is-active', n > 0);
+  $('#country-note').hidden = n === 0;
+}
+
+function renderCountryList() {
+  const q = $('#country-search').value.trim().toLowerCase();
+  const rows = countryOptions.list
+    .filter((c) => !q || countryName(c.code).toLowerCase().includes(q) || c.code.toLowerCase() === q)
+    .map((c) => `<label class="country-row"><input type="checkbox" value="${c.code}" ${countryPending.has(c.code) ? 'checked' : ''} />
+      <span>${countryFlag(c.code)} ${srEsc(countryName(c.code))}</span><span class="country-row__spend">${srMoney(c.spend)}</span></label>`);
+  $('#country-list').innerHTML = rows.join('') || '<p class="hint">Ничего не найдено</p>';
+}
+
+async function openCountryPopover() {
+  countryPending = new Set(analyticsCountries);
+  $('#country-popover').hidden = false;
+  $('#country-search').value = '';
+  const since = $('#analytics-since').value;
+  const until = $('#analytics-until').value;
+  const key = since + '|' + until;
+  if (countryOptions.key !== key) {
+    $('#country-list').innerHTML = '<p class="hint">Загружаю страны...</p>';
+    try {
+      countryOptions = { key, list: await fetchJson(`/api/analytics/countries?${new URLSearchParams({ since, until })}`) };
+    } catch (err) {
+      $('#country-list').innerHTML = `<p class="hint">Ошибка: ${srEsc(err.message)}</p>`;
+      return;
+    }
+  }
+  renderCountryList();
+}
+
+function closeCountryPopover() { $('#country-popover').hidden = true; }
+
+$('#country-toggle').addEventListener('click', () => {
+  if ($('#country-popover').hidden) openCountryPopover(); else closeCountryPopover();
+});
+$('#country-close').addEventListener('click', closeCountryPopover);
+$('#country-search').addEventListener('input', renderCountryList);
+$('#country-list').addEventListener('change', (e) => {
+  if (e.target.type !== 'checkbox') return;
+  if (e.target.checked) countryPending.add(e.target.value); else countryPending.delete(e.target.value);
+});
+$('#country-clear').addEventListener('click', () => {
+  countryPending = new Set();
+  renderCountryList();
+});
+$('#country-apply').addEventListener('click', () => {
+  analyticsCountries = [...countryPending];
+  updateCountryLabel();
+  closeCountryPopover();
+  loadAnalytics($('#analytics-since').value, $('#analytics-until').value);
+});
+$('#country-mode').addEventListener('click', (e) => {
+  const btn = e.target.closest('.segmented__btn');
+  if (!btn) return;
+  analyticsCountryMode = btn.dataset.mode;
+  $all('#country-mode .segmented__btn').forEach((b) => b.classList.toggle('is-active', b === btn));
+  if (analyticsCountries.length) loadAnalytics($('#analytics-since').value, $('#analytics-until').value);
+});
+document.addEventListener('click', (e) => {
+  if (!$('#country-popover').hidden && !e.target.closest('#country-filter')) closeCountryPopover();
+});
+
 $('#analytics-campaign-filter').addEventListener('change', () => loadAnalytics($('#analytics-since').value, $('#analytics-until').value));
 $('#analytics-funnel-filter').addEventListener('change', (e) => { analyticsFunnelFilter = e.target.value; renderAnalyticsView(); });
 $('#analytics-name-filter').addEventListener('input', (e) => { analyticsNameFilter = e.target.value.toLowerCase(); renderAnalyticsView(); });

@@ -197,9 +197,15 @@ app.get('/api/analytics', async (req, res) => {
     const accNames = Object.keys(metaMarketing.accounts());
     if (!accNames.length) return res.status(400).json({ error: 'META_MARKETING_ACCOUNTS не задан в server/.env' });
 
-    const allRows = metaMarketing.filterRowsByCampaignMode(
-      await metaMarketing.fetchAllAccountsInsights(since, until), req.query.campaignMode
-    );
+    // Фильтр по странам (include/exclude): строки берём с разбивкой Meta по
+    // стране, отфильтровываем и сворачиваем обратно по объявлению.
+    const countries = String(req.query.countries || '').split(',').map((c) => c.trim().toUpperCase()).filter(Boolean);
+    const rawRows = countries.length
+      ? metaMarketing.collapseCountryRows(metaMarketing.filterRowsByCountries(
+          await metaMarketing.fetchAllAccountsInsightsBreakdown(since, until, ['country']), countries, req.query.countryMode
+        ))
+      : await metaMarketing.fetchAllAccountsInsights(since, until);
+    const allRows = metaMarketing.filterRowsByCampaignMode(rawRows, req.query.campaignMode);
 
     const overallCreatives = await metaMarketing.attachPreviews(
       metaMarketing.groupRowsByCreative(allRows).map(metaMarketing.buildCreativeEntry)
@@ -275,6 +281,17 @@ app.get('/api/analytics/success-rate', async (req, res) => {
     const { since, until } = req.query;
     if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until' });
     res.json(await require('./successRate').successRateReport(since, until));
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
+app.get('/api/analytics/countries', async (req, res) => {
+  try {
+    const { since, until } = req.query;
+    if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until' });
+    res.json(await metaMarketing.fetchCountrySpend(since, until));
   } catch (err) {
     console.error(err);
     res.status(err.status || 500).json({ error: err.message });

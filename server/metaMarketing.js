@@ -186,6 +186,58 @@ async function fetchAllAccountsInsightsBreakdown(since, until, breakdowns) {
   return perAccount.flat();
 }
 
+// Страны, по которым есть трата за период (для списка в фильтре), от
+// большей траты к меньшей. Берём разбивку на уровне аккаунта — это дёшево.
+async function fetchCountrySpend(since, until) {
+  const perAccount = await Promise.all(
+    Object.values(accounts()).map((accId) => fetchAccountBreakdown(accId, since, until, ['country']))
+  );
+  const out = {};
+  for (const r of perAccount.flat()) {
+    if (!r.country) continue;
+    const c = (out[r.country] ||= { spend: 0, impressions: 0 });
+    c.spend += parseFloat(r.spend || 0);
+    c.impressions += parseInt(r.impressions || 0, 10);
+  }
+  return Object.entries(out).map(([code, v]) => ({ code, ...v })).sort((a, b) => b.spend - a.spend);
+}
+
+// Фильтр строк (ad x country) по списку стран: include — только они,
+// exclude — все кроме них.
+function filterRowsByCountries(rows, countries, mode) {
+  const set = new Set(countries);
+  return rows.filter((r) => (mode === 'exclude' ? !set.has(r.country) : set.has(r.country)));
+}
+
+// После фильтра по странам строки по одному объявлению надо снова свернуть в
+// одну (суммируем spend/показы/клики/покупки и видео-метрики), чтобы дальше
+// работала обычная группировка креативов. Охват (reach) по странам
+// складывается приближённо — одна и та же оговорка, что и в EU Reach.
+function collapseCountryRows(rows) {
+  const byAd = new Map();
+  for (const r of rows) {
+    const t = byAd.get(r.ad_id);
+    if (!t) {
+      const copy = JSON.parse(JSON.stringify(r));
+      delete copy.country;
+      copy._prevPlays = getVideoMetric(r.video_play_actions);
+      byAd.set(r.ad_id, copy);
+      continue;
+    }
+    for (const f of ['impressions', 'reach', 'clicks', 'unique_clicks', 'spend']) {
+      t[f] = String(parseFloat(t[f] || 0) + parseFloat(r[f] || 0));
+    }
+    t.actions = mergeActionArrays(t.actions, r.actions);
+    t.action_values = mergeActionArrays(t.action_values, r.action_values);
+    for (const f of VIDEO_FIELDS) t[f] = mergeVideoMetric(t[f], r[f]);
+    t.video_avg_time_watched_actions = mergeAvgWatchTime(
+      t.video_avg_time_watched_actions, t._prevPlays, r.video_avg_time_watched_actions, getVideoMetric(r.video_play_actions)
+    );
+    t._prevPlays = getVideoMetric(t.video_play_actions);
+  }
+  return [...byAd.values()];
+}
+
 // Список ad name по всем аккаунтам, без фильтра по дате — чтобы понять, какие
 // Task ID из Airtable вообще когда-либо доходили до реального запуска в Meta
 // (level=ad + /ads возвращает объявления в любом статусе за всё время, в
@@ -539,7 +591,7 @@ async function attachPreviews(creatives) {
 
 module.exports = {
   accounts, fetchAllAccountsInsights, fetchAccountInsights,
-  fetchAllAccountsInsightsBreakdown,
+  fetchAllAccountsInsightsBreakdown, fetchCountrySpend, filterRowsByCountries, collapseCountryRows,
   groupRowsByCreative, buildCreativeEntry, summarize, attachPreviews, filterRowsByCampaignMode,
   fetchLaunchedTaskNumbers, fetchPlatformBreakdown, fetchDemographics,
   fetchAdPreview,

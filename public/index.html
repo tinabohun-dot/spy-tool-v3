@@ -377,8 +377,28 @@
             <option value="">Все воронки</option>
           </select>
           <input type="text" id="analytics-name-filter" class="select" placeholder="Поиск по названию" />
+          <div class="country-filter" id="country-filter">
+            <span class="country-filter__label">Страны:</span>
+            <button type="button" id="country-toggle" class="select country-filter__btn">🌍 все страны ▴</button>
+            <div class="segmented" id="country-mode">
+              <button type="button" class="segmented__btn is-active" data-mode="include">include</button>
+              <button type="button" class="segmented__btn" data-mode="exclude">exclude</button>
+            </div>
+            <div id="country-popover" class="country-popover" hidden>
+              <div class="country-popover__head">
+                <input type="text" id="country-search" placeholder="поиск страны" autocomplete="off" />
+                <button type="button" id="country-close" class="country-popover__x" title="Закрыть">✕</button>
+              </div>
+              <div id="country-list" class="country-popover__list"></div>
+              <div class="country-popover__foot">
+                <button type="button" id="country-clear" class="btn btn--ghost">Сбросить</button>
+                <button type="button" id="country-apply" class="btn btn--primary">Применить</button>
+              </div>
+            </div>
+          </div>
           <button type="button" id="analytics-download-btn" class="btn btn--ghost">⬇ Скачать CSV</button>
         </div>
+        <p id="country-note" class="hint" hidden>ⓘ С выбранными странами расход, показы, клики и покупки берутся из разбивки Meta по странам.</p>
         </div>
 
         <div class="table-scroll">
