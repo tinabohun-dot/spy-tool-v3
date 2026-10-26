@@ -575,14 +575,18 @@ async function fetchAdInfo(adId) {
   let info;
   try {
     const url = new URL(`https://graph.facebook.com/${API_VERSION}/${adId}`);
-    url.searchParams.set('fields', 'creative{thumbnail_url,image_url,video_id},effective_status');
+    url.searchParams.set('fields', 'creative{thumbnail_url,image_url,video_id,object_story_spec{video_data{video_id}},asset_feed_spec{videos{video_id}}},effective_status');
     url.searchParams.set('access_token', token());
     const resp = await fetch(url.toString());
     const json = await resp.json();
     info = {
       previewUrl: json?.creative?.thumbnail_url || json?.creative?.image_url || null,
       status: json?.effective_status || null,
-      videoId: json?.creative?.video_id || null
+      videoId: json?.creative?.video_id
+        || json?.creative?.object_story_spec?.video_data?.video_id
+        || json?.creative?.asset_feed_spec?.videos?.[0]?.video_id
+        || null,
+      rawError: json?.error?.message || null
     };
   } catch {
     info = { previewUrl: null, status: null, videoId: null };
@@ -653,16 +657,25 @@ async function fetchVideoLength(videoId) {
     url.searchParams.set('access_token', token());
     const json = await (await fetch(url.toString())).json();
     length = typeof json?.length === 'number' ? json.length : null;
-  } catch { /* оставляем null */ }
+    if (json?.error) videoLengthErrors.push(json.error.message);
+  } catch (err) { videoLengthErrors.push(err.message); }
   videoLengthCache.set(videoId, length);
   return length;
 }
+const videoLengthErrors = [];
 
 // Требует предварительного attachPreviews (там подтягивается video_id).
 async function attachVideoLengths(creatives) {
   const ids = [...new Set(creatives.map((c) => adInfoCache.get(c.adId)?.videoId).filter(Boolean))];
   await mapConcurrent(ids, 8, fetchVideoLength);
   for (const c of creatives) c.videoLength = videoLengthCache.get(adInfoCache.get(c.adId)?.videoId) ?? null;
+  attachVideoLengths.lastDebug = {
+    creatives: creatives.length,
+    withVideoId: creatives.filter((c) => adInfoCache.get(c.adId)?.videoId).length,
+    withLength: creatives.filter((c) => c.videoLength).length,
+    infoErrors: [...new Set(creatives.map((c) => adInfoCache.get(c.adId)?.rawError).filter(Boolean))].slice(0, 3),
+    lengthErrors: [...new Set(videoLengthErrors)].slice(0, 3)
+  };
   return creatives;
 }
 

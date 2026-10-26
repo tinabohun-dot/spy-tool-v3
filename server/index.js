@@ -319,6 +319,7 @@ app.get('/api/analytics/retention', async (req, res) => {
     };
     res.json({
       since, until,
+      debug: req.query.debug ? metaMarketing.attachVideoLengths.lastDebug : undefined,
       creatives: creatives.map((c) => ({
         adId: c.adId, videoLength: c.videoLength ?? null, name: c.name, funnel: c.primaryFunnel || 'Другое', grade: c.grade, previewUrl: c.previewUrl,
         spend: c.spend, impressions: c.impressions, views3s: c.videoViews3s || 0, plays: c.videoPlays,
