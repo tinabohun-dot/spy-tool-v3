@@ -1109,7 +1109,7 @@ async function openAdPreview(adId, adName) {
   }
 }
 
-for (const tbodyId of ['#analytics-tbody', '#tops-tbody', '#ret-tbody', '#drop-detail']) {
+for (const tbodyId of ['#analytics-tbody', '#tops-tbody', '#ret-tbody', '#drop-detail', '#viz-charts']) {
   $(tbodyId).addEventListener('click', (e) => {
     const img = e.target.closest('.thumb[data-ad-id]');
     if (!img) return;
@@ -1864,14 +1864,9 @@ function renderDropSummary(list) {
 let dropGroups = [];
 let dropSelected = null;
 
-// Список креативов выбранного столбика (воронки или одного креатива) с
-// метриками удержания и путём после клика.
-function renderDropDetail(label, scroll) {
-  const g = dropGroups.find((x) => x.label === label);
-  if (!g) return;
-  dropSelected = label;
-  const bySec = $('#drop-scale').value === 'sec';
-  const items = g.items.map(retDerive).sort((a, b) => b.spend - a.spend);
+// Таблица креативов с удержанием и путём после клика (общая для списка по
+// клику в "Доходимости" и в "Воронке (график)"). items — уже retDerive'нутые.
+function creativeListHtml(items, bySec) {
   const cell = (v) => (v == null ? '—' : srPct(v));
   const rows = items.map((c) => {
     const gc = GRADE_BADGE_COLORS[c.grade] || { bg: '#eee', color: '#333' };
@@ -1880,14 +1875,24 @@ function renderDropDetail(label, scroll) {
       <td>${c.previewUrl ? `<img class="thumb ret-thumb" src="${c.previewUrl}" loading="lazy" data-ad-id="${c.adId}" data-ad-name="${srEsc(c.name)}" title="Кликни, чтобы посмотреть крео" />` : ''}</td>
       <td class="ret-name" title="${srEsc(c.name)}">${srEsc(c.name)}</td>
       <td><span class="grade-badge" style="background:${gc.bg};color:${gc.color}">${c.grade}</span></td>
-      <td>${srMoney(c.spend)}</td><td>${Math.round(c.plays).toLocaleString('ru-RU')}</td>
+      <td>${srMoney(c.spend)}</td><td>${c.impressions.toLocaleString('ru-RU')}</td><td>${Math.round(c.plays).toLocaleString('ru-RU')}</td>
       ${rets.map((v) => `<td>${cell(v)}</td>`).join('')}
       <td class="ret-sep">${c.linkClicks}</td><td>${c.landingViews}</td><td>${srPct(c.lpvRate)}</td><td><strong>${c.purchases}</strong></td><td>${c.cpa ? '$' + Math.round(c.cpa) : '—'}</td></tr>`;
   }).join('');
   const heads = bySec ? ['3 сек', '5 сек', '10 сек', '15 сек'] : ['25%', '50%', '75%', '100%'];
-  $('#drop-detail').innerHTML = `<h4>Креативы: ${srEsc(label)} <span class="hint">— ${items.length} шт., по убыванию spend</span></h4>
-    <div class="table-scroll"><table class="table analytics-table"><thead><tr><th>Превью</th><th>Название</th><th>Grade</th><th>Spend</th><th>Plays</th>
+  return `<div class="table-scroll"><table class="table analytics-table"><thead><tr><th>Превью</th><th>Название</th><th>Grade</th><th>Spend</th><th>Показы</th><th>Plays</th>
     ${heads.map((h) => `<th>${h}</th>`).join('')}<th class="ret-sep">Клики</th><th>LPV</th><th>LPV / клики</th><th>Покупки</th><th>CPA</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+// Список креативов выбранного столбика (воронки или одного креатива) с
+// метриками удержания и путём после клика.
+function renderDropDetail(label, scroll) {
+  const g = dropGroups.find((x) => x.label === label);
+  if (!g) return;
+  dropSelected = label;
+  const bySec = $('#drop-scale').value === 'sec';
+  const items = g.items.map(retDerive).sort((a, b) => b.spend - a.spend);
+  $('#drop-detail').innerHTML = `<h4>Креативы: ${srEsc(label)} <span class="hint">— ${items.length} шт., по убыванию spend</span></h4>${creativeListHtml(items, bySec)}`;
   $('#drop-detail').hidden = false;
   if (scroll) $('#drop-detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -1976,7 +1981,9 @@ function vizSteps(t, path) {
   return [['Показы', t.impressions], ['Plays', t.plays], ['3-сек. просмотры', t.views3s], ['Клики', t.linkClicks], ['Просмотр лендинга', t.landingViews], ['Покупки', t.purchases]];
 }
 
-function vizChartHtml(title, count, steps) {
+let vizGroups = [];
+
+function vizChartHtml(title, count, steps, idx) {
   const base = steps[0][1] || 1;
   let prev = 1;
   const cols = steps.map(([label, v]) => {
@@ -1993,7 +2000,9 @@ function vizChartHtml(title, count, steps) {
     prev = pct;
     return html;
   }).join('');
-  return `<div class="panel-card viz-card"><h4>${srEsc(title)} <span class="hint">— ${count} креат.</span></h4><div class="viz">${cols}</div></div>`;
+  return `<div class="panel-card viz-card" data-idx="${idx}"><h4>${srEsc(title)} <span class="hint">— ${count} креат.</span>
+    <button type="button" class="btn btn--ghost viz-toggle">Показать креативы ▾</button></h4>
+    <div class="viz">${cols}</div><div class="viz-list" hidden></div></div>`;
 }
 
 function renderViz() {
@@ -2003,11 +2012,32 @@ function renderViz() {
   const funnels = [...new Set(list.map((c) => c.funnel))]
     .map((name) => ({ name, items: list.filter((c) => c.funnel === name) }))
     .sort((a, b) => b.items.reduce((x, c) => x + c.impressions, 0) - a.items.reduce((x, c) => x + c.impressions, 0));
-  $('#viz-charts').innerHTML = [
-    vizChartHtml('Все воронки', list.length, vizSteps(dropAggregate(list), path)),
-    ...funnels.map((f) => vizChartHtml(f.name, f.items.length, vizSteps(dropAggregate(f.items), path)))
-  ].join('');
+  vizGroups = [{ label: 'Все воронки', items: list }, ...funnels.map((f) => ({ label: f.name, items: f.items }))];
+  const total = retData ? retData.creatives.length : list.length;
+  const minImpr = +$('#ret-min-impr').value || 0;
+  $('#viz-scope').textContent = `На графиках ${list.length} из ${total} видео-креативов за период ${retData.since} — ${retData.until}. ` +
+    `В расчёт попадают только видео (статика и лонгриды без метрик просмотра) с показами не меньше ${minImpr}` +
+    ($('#ret-funnel-filter').value ? `, воронка «${$('#ret-funnel-filter').value}»` : '') +
+    '. Увеличь период или снизь «Мин. показов», чтобы увидеть больше. Нажми «Показать креативы» у графика, чтобы увидеть список.';
+  $('#viz-charts').innerHTML = vizGroups.map((g, i) => vizChartHtml(g.label, g.items.length, vizSteps(dropAggregate(g.items), path), i)).join('');
 }
+
+// Клик по кнопке (или по столбцу) раскрывает список креативов этого графика.
+$('#viz-charts').addEventListener('click', (e) => {
+  if (e.target.closest('.thumb')) return;
+  const card = e.target.closest('.viz-card');
+  if (!card || !(e.target.closest('.viz-toggle') || e.target.closest('.viz__col'))) return;
+  const box = card.querySelector('.viz-list');
+  if (box.hidden) {
+    const g = vizGroups[+card.dataset.idx];
+    const items = g.items.map(retDerive).sort((a, b) => b.spend - a.spend);
+    box.innerHTML = creativeListHtml(items, $('#viz-path').value === 'video');
+    box.hidden = false;
+  } else {
+    box.hidden = true;
+  }
+  card.querySelector('.viz-toggle').textContent = box.hidden ? 'Показать креативы ▾' : 'Скрыть креативы ▴';
+});
 $('#viz-path').addEventListener('change', renderViz);
 
 $('#ret-subtabs').addEventListener('click', (e) => {
