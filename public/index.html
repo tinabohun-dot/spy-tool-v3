@@ -351,7 +351,27 @@
         <label class="ret-field">Воронка
           <select id="ret-funnel-filter" class="select"><option value="">Все воронки</option></select>
         </label>
+        <div class="country-filter" id="ret-country-filter">
+          <span class="country-filter__label">Страны:</span>
+          <button type="button" id="ret-country-toggle" class="select country-filter__btn">🌍 все страны ▴</button>
+          <div class="segmented" id="ret-country-mode">
+            <button type="button" class="segmented__btn is-active" data-mode="include">include</button>
+            <button type="button" class="segmented__btn" data-mode="exclude">exclude</button>
+          </div>
+          <div id="ret-country-popover" class="country-popover" hidden>
+            <div class="country-popover__head">
+              <input type="text" id="ret-country-search" placeholder="поиск страны" autocomplete="off" />
+              <button type="button" id="ret-country-close" class="country-popover__x" title="Закрыть">✕</button>
+            </div>
+            <div id="ret-country-list" class="country-popover__list"></div>
+            <div class="country-popover__foot">
+              <button type="button" id="ret-country-clear" class="btn btn--ghost">Сбросить</button>
+              <button type="button" id="ret-country-apply" class="btn btn--primary">Применить</button>
+            </div>
+          </div>
+        </div>
       </div>
+      <p id="ret-country-note" class="hint" hidden>ⓘ С выбранными странами метрики берутся из разбивки Meta по странам.</p>
 
       <div id="subtab-ret-top" class="tab-panel is-active">
         <div id="ret-funnel" class="panel-card ret-funnel"></div>
@@ -359,6 +379,10 @@
           <label class="ret-field">Сортировать по
             <select id="ret-sort" class="select">
               <option value="" disabled hidden>По колонке (клик по заголовку)</option>
+              <option value="t3">Удержание на 3 сек</option>
+              <option value="t5">Удержание на 5 сек</option>
+              <option value="t10">Удержание на 10 сек</option>
+              <option value="t15">Удержание на 15 сек</option>
               <option value="p50r">Удержание 50%</option>
               <option value="p25r">Удержание 25%</option>
               <option value="p75r">Удержание 75%</option>
@@ -376,7 +400,7 @@
             <thead><tr>
               <th>#</th><th>Превью</th><th data-sort="name">Название</th><th data-sort="grade">Grade</th><th data-sort="funnel">Funnel</th>
               <th data-sort="spend">Spend</th><th data-sort="impressions">Показы</th>
-              <th data-sort="hook">Hook Rate</th><th data-sort="plays">Plays</th><th data-sort="p25r">25%</th><th data-sort="p50r">50%</th>
+              <th data-sort="hook">Hook Rate</th><th data-sort="plays">Plays</th><th data-sort="t3">3 сек</th><th data-sort="t5">5 сек</th><th data-sort="t10">10 сек</th><th data-sort="t15">15 сек</th><th data-sort="p25r">25%</th><th data-sort="p50r">50%</th>
               <th data-sort="p75r">75%</th><th data-sort="p100r">100%</th><th data-sort="avgWatch">Avg watch</th>
               <th class="ret-sep" data-sort="linkClicks">Клики</th><th data-sort="ctr">CTR</th><th data-sort="landingViews">LPV</th>
               <th data-sort="lpvRate">LPV / клики</th><th data-sort="purchases">Покупки</th><th data-sort="buyRate">Покупки / LPV</th><th data-sort="cpa">CPA</th>

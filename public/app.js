@@ -867,9 +867,9 @@ async function loadAnalytics(since, until) {
     const params = new URLSearchParams({ since, until });
     const campaignMode = $('#analytics-campaign-filter').value;
     if (campaignMode) params.set('campaignMode', campaignMode);
-    if (analyticsCountries.length) {
-      params.set('countries', analyticsCountries.join(','));
-      params.set('countryMode', analyticsCountryMode);
+    if (analyticsCountryFilter.countries.length) {
+      params.set('countries', analyticsCountryFilter.countries.join(','));
+      params.set('countryMode', analyticsCountryFilter.mode);
     }
     const resp = await fetch(`/api/analytics?${params}`);
     const data = await resp.json();
@@ -928,10 +928,8 @@ $('#analytics-account-chips').addEventListener('click', (e) => {
 $('#analytics-grade-filter').addEventListener('change', (e) => { analyticsGradeFilter = e.target.value; renderAnalyticsView(); });
 $('#analytics-type-filter').addEventListener('change', (e) => { analyticsTypeFilter = e.target.value; renderAnalyticsView(); });
 // ---------- Фильтр по странам (include / exclude) ----------
-let analyticsCountries = [];
-let analyticsCountryMode = 'include';
-let countryPending = new Set();
-let countryOptions = { key: null, list: [] };
+// Один и тот же виджет используется в "Все креативы" и в Retention: id
+// элементов строятся из префикса (country-toggle / ret-country-toggle ...).
 let regionNames = null;
 try { regionNames = new Intl.DisplayNames(['ru'], { type: 'region' }); } catch (e) { /* без названий — покажем коды */ }
 
@@ -943,71 +941,78 @@ function countryFlag(code) {
   return String.fromCodePoint(...[...code].map((c) => 0x1F1E6 + c.charCodeAt(0) - 65));
 }
 
-function updateCountryLabel() {
-  const n = analyticsCountries.length;
-  $('#country-toggle').textContent = n ? `🌍 выбрано: ${n} ▴` : '🌍 все страны ▴';
-  $('#country-toggle').classList.toggle('is-active', n > 0);
-  $('#country-note').hidden = n === 0;
-}
+function setupCountryFilter({ prefix, getPeriod, onApply }) {
+  const el = (name) => $(`#${prefix}-${name}`);
+  const state = { countries: [], mode: 'include' };
+  let pending = new Set();
+  let options = { key: null, list: [] };
 
-function renderCountryList() {
-  const q = $('#country-search').value.trim().toLowerCase();
-  const rows = countryOptions.list
-    .filter((c) => !q || countryName(c.code).toLowerCase().includes(q) || c.code.toLowerCase() === q)
-    .map((c) => `<label class="country-row"><input type="checkbox" value="${c.code}" ${countryPending.has(c.code) ? 'checked' : ''} />
-      <span>${countryFlag(c.code)} ${srEsc(countryName(c.code))}</span><span class="country-row__spend">${srMoney(c.spend)}</span></label>`);
-  $('#country-list').innerHTML = rows.join('') || '<p class="hint">Ничего не найдено</p>';
-}
-
-async function openCountryPopover() {
-  countryPending = new Set(analyticsCountries);
-  $('#country-popover').hidden = false;
-  $('#country-search').value = '';
-  const since = $('#analytics-since').value;
-  const until = $('#analytics-until').value;
-  const key = since + '|' + until;
-  if (countryOptions.key !== key) {
-    $('#country-list').innerHTML = '<p class="hint">Загружаю страны...</p>';
-    try {
-      countryOptions = { key, list: await fetchJson(`/api/analytics/countries?${new URLSearchParams({ since, until })}`) };
-    } catch (err) {
-      $('#country-list').innerHTML = `<p class="hint">Ошибка: ${srEsc(err.message)}</p>`;
-      return;
-    }
+  function updateLabel() {
+    const n = state.countries.length;
+    el('toggle').textContent = n ? `🌍 выбрано: ${n} ▴` : '🌍 все страны ▴';
+    el('toggle').classList.toggle('is-active', n > 0);
+    el('note').hidden = n === 0;
   }
-  renderCountryList();
+
+  function renderList() {
+    const q = el('search').value.trim().toLowerCase();
+    const rows = options.list
+      .filter((c) => !q || countryName(c.code).toLowerCase().includes(q) || c.code.toLowerCase() === q)
+      .map((c) => `<label class="country-row"><input type="checkbox" value="${c.code}" ${pending.has(c.code) ? 'checked' : ''} />
+        <span>${countryFlag(c.code)} ${srEsc(countryName(c.code))}</span><span class="country-row__spend">${srMoney(c.spend)}</span></label>`);
+    el('list').innerHTML = rows.join('') || '<p class="hint">Ничего не найдено</p>';
+  }
+
+  async function open() {
+    pending = new Set(state.countries);
+    el('popover').hidden = false;
+    el('search').value = '';
+    const { since, until } = getPeriod();
+    const key = since + '|' + until;
+    if (options.key !== key) {
+      el('list').innerHTML = '<p class="hint">Загружаю страны...</p>';
+      try {
+        options = { key, list: await fetchJson(`/api/analytics/countries?${new URLSearchParams({ since, until })}`) };
+      } catch (err) {
+        el('list').innerHTML = `<p class="hint">Ошибка: ${srEsc(err.message)}</p>`;
+        return;
+      }
+    }
+    renderList();
+  }
+  const close = () => { el('popover').hidden = true; };
+
+  el('toggle').addEventListener('click', () => { if (el('popover').hidden) open(); else close(); });
+  el('close').addEventListener('click', close);
+  el('search').addEventListener('input', renderList);
+  el('list').addEventListener('change', (e) => {
+    if (e.target.type !== 'checkbox') return;
+    if (e.target.checked) pending.add(e.target.value); else pending.delete(e.target.value);
+  });
+  el('clear').addEventListener('click', () => { pending = new Set(); renderList(); });
+  el('apply').addEventListener('click', () => {
+    state.countries = [...pending];
+    updateLabel();
+    close();
+    onApply();
+  });
+  el('mode').addEventListener('click', (e) => {
+    const btn = e.target.closest('.segmented__btn');
+    if (!btn) return;
+    state.mode = btn.dataset.mode;
+    $all(`#${prefix}-mode .segmented__btn`).forEach((b) => b.classList.toggle('is-active', b === btn));
+    if (state.countries.length) onApply();
+  });
+  document.addEventListener('click', (e) => {
+    if (!el('popover').hidden && !e.target.closest(`#${prefix}-filter`)) close();
+  });
+  return state;
 }
 
-function closeCountryPopover() { $('#country-popover').hidden = true; }
-
-$('#country-toggle').addEventListener('click', () => {
-  if ($('#country-popover').hidden) openCountryPopover(); else closeCountryPopover();
-});
-$('#country-close').addEventListener('click', closeCountryPopover);
-$('#country-search').addEventListener('input', renderCountryList);
-$('#country-list').addEventListener('change', (e) => {
-  if (e.target.type !== 'checkbox') return;
-  if (e.target.checked) countryPending.add(e.target.value); else countryPending.delete(e.target.value);
-});
-$('#country-clear').addEventListener('click', () => {
-  countryPending = new Set();
-  renderCountryList();
-});
-$('#country-apply').addEventListener('click', () => {
-  analyticsCountries = [...countryPending];
-  updateCountryLabel();
-  closeCountryPopover();
-  loadAnalytics($('#analytics-since').value, $('#analytics-until').value);
-});
-$('#country-mode').addEventListener('click', (e) => {
-  const btn = e.target.closest('.segmented__btn');
-  if (!btn) return;
-  analyticsCountryMode = btn.dataset.mode;
-  $all('#country-mode .segmented__btn').forEach((b) => b.classList.toggle('is-active', b === btn));
-  if (analyticsCountries.length) loadAnalytics($('#analytics-since').value, $('#analytics-until').value);
-});
-document.addEventListener('click', (e) => {
-  if (!$('#country-popover').hidden && !e.target.closest('#country-filter')) closeCountryPopover();
+const analyticsCountryFilter = setupCountryFilter({
+  prefix: 'country',
+  getPeriod: () => ({ since: $('#analytics-since').value, until: $('#analytics-until').value }),
+  onApply: () => loadAnalytics($('#analytics-since').value, $('#analytics-until').value)
 });
 
 $('#analytics-campaign-filter').addEventListener('change', () => loadAnalytics($('#analytics-since').value, $('#analytics-until').value));
@@ -1104,7 +1109,7 @@ async function openAdPreview(adId, adName) {
   }
 }
 
-for (const tbodyId of ['#analytics-tbody', '#tops-tbody']) {
+for (const tbodyId of ['#analytics-tbody', '#tops-tbody', '#ret-tbody']) {
   $(tbodyId).addEventListener('click', (e) => {
     const img = e.target.closest('.thumb[data-ad-id]');
     if (!img) return;
@@ -1683,6 +1688,10 @@ async function loadRetention() {
     const params = new URLSearchParams({ since: $('#ret-since').value, until: $('#ret-until').value });
     const mode = $('#ret-campaign').value;
     if (mode) params.set('campaignMode', mode);
+    if (retCountryFilter.countries.length) {
+      params.set('countries', retCountryFilter.countries.join(','));
+      params.set('countryMode', retCountryFilter.mode);
+    }
     retData = await fetchJson(`/api/analytics/retention?${params}`);
     $('#ret-status').textContent = '';
     const funnels = [...new Set(retData.creatives.map((c) => c.funnel))].sort();
@@ -1697,10 +1706,13 @@ async function loadRetention() {
 }
 
 const retRate = (a, b) => (b > 0 ? a / b : 0);
+// Кривая удержания Meta: элемент i — % запусков видео, дожививших до i-й секунды.
+const retSec = (c, sec) => (c.curve && c.curve[sec] != null ? c.curve[sec] / 100 : null);
 function retDerive(c) {
   return {
     ...c,
     hook: retRate(c.views3s, c.impressions),
+    t3: retSec(c, 3), t5: retSec(c, 5), t10: retSec(c, 10), t15: retSec(c, 15),
     p25r: retRate(c.p25, c.plays), p50r: retRate(c.p50, c.plays), p75r: retRate(c.p75, c.plays), p100r: retRate(c.p100, c.plays),
     ctr: retRate(c.linkClicks, c.impressions),
     lpvRate: retRate(c.landingViews, c.linkClicks),
@@ -1709,6 +1721,7 @@ function retDerive(c) {
 }
 
 function retBarCell(v) {
+  if (v == null) return '<td class="ret-cell">—</td>';
   const w = Math.min(100, v * 100);
   return `<td class="ret-cell" style="background:linear-gradient(90deg,#cfe9dc ${w}%,transparent ${w}%)">${srPct(v)}</td>`;
 }
@@ -1759,16 +1772,17 @@ function renderRetention() {
     const gc = GRADE_BADGE_COLORS[c.grade] || { bg: '#eee', color: '#333' };
     return `<tr>
       <td>${i + 1}</td>
-      <td>${c.previewUrl ? `<img class="ret-thumb" src="${c.previewUrl}" loading="lazy" />` : ''}</td>
+      <td>${c.previewUrl ? `<img class="thumb ret-thumb" src="${c.previewUrl}" loading="lazy" data-ad-id="${c.adId}" data-ad-name="${srEsc(c.name)}" title="Кликни, чтобы посмотреть крео" />` : ''}</td>
       <td class="ret-name" title="${srEsc(c.name)}">${srEsc(c.name)}</td>
       <td><span class="grade-badge" style="background:${gc.bg};color:${gc.color}">${c.grade}</span></td>
       <td>${srEsc(c.funnel)}</td><td>${srMoney(c.spend)}</td><td>${c.impressions.toLocaleString('ru-RU')}</td>
       ${retBarCell(c.hook)}<td>${Math.round(c.plays).toLocaleString('ru-RU')}</td>
+      ${retBarCell(c.t3)}${retBarCell(c.t5)}${retBarCell(c.t10)}${retBarCell(c.t15)}
       ${retBarCell(c.p25r)}${retBarCell(c.p50r)}${retBarCell(c.p75r)}${retBarCell(c.p100r)}
       <td>${c.avgWatch ? c.avgWatch.toFixed(1) + 's' : '—'}</td>
       <td class="ret-sep">${c.linkClicks}</td><td>${srPct(c.ctr, 2)}</td><td>${c.landingViews}</td><td>${srPct(c.lpvRate)}</td>
       <td><strong>${c.purchases}</strong></td><td>${srPct(c.buyRate)}</td><td>${c.cpa ? '$' + Math.round(c.cpa) : '—'}</td></tr>`;
-  }).join('') || '<tr><td colspan="21" class="hint">Нет видео-креативов под эти фильтры</td></tr>';
+  }).join('') || '<tr><td colspan="25" class="hint">Нет видео-креативов под эти фильтры</td></tr>';
 
   retFiltered = list;
   if ($('#subtab-ret-drop').classList.contains('is-active')) renderDropoff();
@@ -1908,6 +1922,11 @@ $('#ret-table').addEventListener('click', (e) => {
 $('#ret-min-impr').addEventListener('input', renderRetention);
 $('#ret-funnel-filter').addEventListener('change', renderRetention);
 $('#ret-campaign').addEventListener('change', loadRetention);
+const retCountryFilter = setupCountryFilter({
+  prefix: 'ret-country',
+  getPeriod: () => ({ since: $('#ret-since').value, until: $('#ret-until').value }),
+  onApply: loadRetention
+});
 $('#ret-period-presets').addEventListener('click', (e) => {
   const btn = e.target.closest('.segmented__btn');
   if (!btn || btn.id === 'ret-closed-week-btn') return;

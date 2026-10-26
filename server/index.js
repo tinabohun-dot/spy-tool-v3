@@ -320,7 +320,7 @@ app.get('/api/analytics/retention', async (req, res) => {
     res.json({
       since, until,
       creatives: creatives.map((c) => ({
-        name: c.name, funnel: c.primaryFunnel || 'Другое', grade: c.grade, previewUrl: c.previewUrl,
+        adId: c.adId, name: c.name, funnel: c.primaryFunnel || 'Другое', grade: c.grade, previewUrl: c.previewUrl,
         spend: c.spend, impressions: c.impressions, views3s: c.videoViews3s || 0, plays: c.videoPlays,
         p25: c.videoP25, p50: c.videoP50, p75: c.videoP75, p100: c.videoP100, avgWatch: c.avgWatchTime,
         linkClicks: c.linkClicks, landingViews: c.landingViews, purchases: c.purchases, cpa: c.cpa,
