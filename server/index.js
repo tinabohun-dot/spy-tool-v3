@@ -298,7 +298,12 @@ app.get('/api/analytics/retention', async (req, res) => {
     // Кривая удержания по секундам грузится параллельно с основными данными;
     // если Meta её не отдала — просто без неё.
     const curvesPromise = metaMarketing.fetchVideoCurves(since, until, countries, req.query.countryMode)
-      .catch((err) => { console.warn('[retention] кривая удержания недоступна:', err.message); return {}; });
+      .catch((err) => {
+        console.warn('[retention] кривая удержания недоступна:', err.message);
+        const empty = {};
+        Object.defineProperty(empty, '_note', { value: { failed: true, error: err.message }, enumerable: false });
+        return empty;
+      });
     const rawRows = countries.length
       ? metaMarketing.collapseCountryRows(metaMarketing.filterRowsByCountries(
           await metaMarketing.fetchAllAccountsInsightsBreakdown(since, until, ['country']), countries, req.query.countryMode
@@ -328,6 +333,7 @@ app.get('/api/analytics/retention', async (req, res) => {
     };
     res.json({
       since, until,
+      curveNote: curves._note || null,
       totals: { all: allCreatives.length, video: creatives.length, nonVideo: allCreatives.length - creatives.length },
       creatives: creatives.map((c) => ({
         adId: c.adId, videoLength: c.videoLength ?? null, name: c.name, funnel: c.primaryFunnel || 'Другое', grade: c.grade, previewUrl: c.previewUrl,

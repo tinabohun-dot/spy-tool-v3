@@ -1793,6 +1793,8 @@ function renderRetention() {
   const hiddenByFilter = retData.creatives.length - list.length;
   $('#ret-scope').textContent = `Показано ${list.length} из ${t.video} видео-креативов за период. ` +
     (hiddenByFilter > 0 ? `Скрыто ${hiddenByFilter}: меньше ${minImpr} показов${funnel ? ' или другая воронка' : ''} (фильтр «Мин. показов» — поставь 0, чтобы увидеть все). ` : '') +
+    (retData.curveNote?.failed ? `⚠ Meta не отдала удержание по секундам (3/5/10/15 сек), попробуй обновить через минуту: ${retData.curveNote.error}. ` : '') +
+    (retData.curveNote?.allCountries ? 'Удержание по секундам (3/5/10/15 сек) Meta считает только по всем странам сразу, поэтому эти колонки не учитывают фильтр по странам. ' : '') +
     (t.nonVideo > 0 ? `Ещё ${t.nonVideo} креативов (статика, лонгриды) здесь не показываются — у них нет метрик просмотра видео; они есть в «Аналитика → Все креативы».` : '');
   if ($('#subtab-ret-drop').classList.contains('is-active')) renderDropoff();
   if ($('#subtab-ret-viz').classList.contains('is-active')) renderViz();

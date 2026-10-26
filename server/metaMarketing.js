@@ -203,10 +203,26 @@ async function fetchVideoCurveRows(accountId, since, until, breakdowns) {
 
 // ad_id -> { plays, curve: [% на каждом шаге], thru15 } (с учётом фильтра стран).
 async function fetchVideoCurves(since, until, countries, countryMode) {
-  const byCountry = countries && countries.length ? ['country'] : [];
-  const perAccount = await Promise.all(
+  let byCountry = countries && countries.length ? ['country'] : [];
+  const load = () => Promise.all(
     Object.values(accounts()).map((accId) => fetchVideoCurveRows(accId, since, until, byCountry))
   );
+  let perAccount;
+  let note = null;
+  try {
+    perAccount = await load();
+    if (byCountry.length && !perAccount.flat().some((r) => r.video_play_curve_actions?.length)) {
+      throw new Error('Meta не вернула video_play_curve_actions при разбивке по странам');
+    }
+  } catch (err) {
+    if (!byCountry.length) throw err;
+    // Meta может не отдавать кривую удержания вместе с разбивкой по странам —
+    // тогда показываем кривую по всем странам вместо пустых колонок.
+    console.warn('[retention] кривая со страной недоступна, беру по всем странам:', err.message);
+    note = { allCountries: true, error: err.message };
+    byCountry = [];
+    perAccount = await load();
+  }
   let rows = perAccount.flat();
   if (byCountry.length) rows = filterRowsByCountries(rows, countries, countryMode);
   const out = {};
@@ -226,6 +242,7 @@ async function fetchVideoCurves(since, until, countries, countryMode) {
     t.curve = t.curveSum && t.plays > 0 ? t.curveSum.map((v) => v / t.plays) : null;
     delete t.curveSum;
   }
+  Object.defineProperty(out, '_note', { value: note, enumerable: false });
   return out;
 }
 
