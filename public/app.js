@@ -1661,6 +1661,7 @@ $('#sr-filters').addEventListener('submit', (e) => {
 // ---------- Retention (отдельный раздел в левом меню) ----------
 let retInited = false;
 let retData = null;
+let retSort = { key: 'p50r', dir: 'desc' };
 
 function setRetPeriod(days) {
   const today = new Date();
@@ -1716,11 +1717,22 @@ function renderRetention() {
   if (!retData) return;
   const minImpr = +$('#ret-min-impr').value || 0;
   const funnel = $('#ret-funnel-filter').value;
-  const sortKey = $('#ret-sort').value;
-  const sortMap = { p25: 'p25r', p50: 'p50r', p75: 'p75r', p100: 'p100r', hook: 'hook', avgWatch: 'avgWatch', lpvRate: 'lpvRate', buyRate: 'buyRate', purchases: 'purchases' };
+  const { key, dir } = retSort;
+  const mult = dir === 'asc' ? 1 : -1;
   const list = retData.creatives.map(retDerive)
     .filter((c) => c.impressions >= minImpr && (!funnel || c.funnel === funnel))
-    .sort((a, b) => b[sortMap[sortKey]] - a[sortMap[sortKey]]);
+    .sort((a, b) => {
+      const x = a[key], y = b[key];
+      // Пустые значения (например, CPA без покупок) всегда в конце списка.
+      if (x == null && y == null) return 0;
+      if (x == null) return 1;
+      if (y == null) return -1;
+      return (typeof x === 'string' ? x.localeCompare(y) : x - y) * mult;
+    });
+  $all('#ret-table th[data-sort]').forEach((th) => {
+    th.classList.toggle('is-sorted', th.dataset.sort === key && dir === 'desc');
+    th.classList.toggle('is-sorted-asc', th.dataset.sort === key && dir === 'asc');
+  });
 
   const sum = (k) => list.reduce((s, c) => s + (c[k] || 0), 0);
   // [подпись, значение, от чего считаем процент]: Hook Rate и CTR — от показов,
@@ -1759,7 +1771,22 @@ function renderRetention() {
   }).join('') || '<tr><td colspan="21" class="hint">Нет видео-креативов под эти фильтры</td></tr>';
 }
 
-$('#ret-sort').addEventListener('change', renderRetention);
+$('#ret-sort').addEventListener('change', () => {
+  retSort = { key: $('#ret-sort').value, dir: 'desc' };
+  renderRetention();
+});
+$('#ret-table').addEventListener('click', (e) => {
+  const th = e.target.closest('th[data-sort]');
+  if (!th) return;
+  const key = th.dataset.sort;
+  const textCol = ['name', 'grade', 'funnel'].includes(key);
+  retSort = retSort.key === key
+    ? { key, dir: retSort.dir === 'desc' ? 'asc' : 'desc' }
+    : { key, dir: textCol ? 'asc' : 'desc' };
+  const sel = $('#ret-sort');
+  sel.value = [...sel.options].some((o) => o.value === key) ? key : '';
+  renderRetention();
+});
 $('#ret-min-impr').addEventListener('input', renderRetention);
 $('#ret-funnel-filter').addEventListener('change', renderRetention);
 $('#ret-campaign').addEventListener('change', loadRetention);

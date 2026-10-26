@@ -337,10 +337,11 @@
       <div class="analytics-table-toolbar ret-toolbar">
         <label class="ret-field">Сортировать по
           <select id="ret-sort" class="select">
-            <option value="p50">Удержание 50%</option>
-            <option value="p25">Удержание 25%</option>
-            <option value="p75">Удержание 75%</option>
-            <option value="p100">Досмотры 100%</option>
+            <option value="" disabled hidden>По колонке (клик по заголовку)</option>
+            <option value="p50r">Удержание 50%</option>
+            <option value="p25r">Удержание 25%</option>
+            <option value="p75r">Удержание 75%</option>
+            <option value="p100r">Досмотры 100%</option>
             <option value="hook">Hook Rate</option>
             <option value="avgWatch">Среднее время просмотра</option>
             <option value="lpvRate">Переход в воронку (LPV / клики)</option>
@@ -365,9 +366,12 @@
       <div class="table-scroll">
         <table class="table analytics-table ret-table" id="ret-table">
           <thead><tr>
-            <th>#</th><th>Превью</th><th>Название</th><th>Grade</th><th>Funnel</th><th>Spend</th><th>Показы</th>
-            <th>Hook Rate</th><th>Plays</th><th>25%</th><th>50%</th><th>75%</th><th>100%</th><th>Avg watch</th>
-            <th class="ret-sep">Клики</th><th>CTR</th><th>LPV</th><th>LPV / клики</th><th>Покупки</th><th>Покупки / LPV</th><th>CPA</th>
+            <th>#</th><th>Превью</th><th data-sort="name">Название</th><th data-sort="grade">Grade</th><th data-sort="funnel">Funnel</th>
+            <th data-sort="spend">Spend</th><th data-sort="impressions">Показы</th>
+            <th data-sort="hook">Hook Rate</th><th data-sort="plays">Plays</th><th data-sort="p25r">25%</th><th data-sort="p50r">50%</th>
+            <th data-sort="p75r">75%</th><th data-sort="p100r">100%</th><th data-sort="avgWatch">Avg watch</th>
+            <th class="ret-sep" data-sort="linkClicks">Клики</th><th data-sort="ctr">CTR</th><th data-sort="landingViews">LPV</th>
+            <th data-sort="lpvRate">LPV / клики</th><th data-sort="purchases">Покупки</th><th data-sort="buyRate">Покупки / LPV</th><th data-sort="cpa">CPA</th>
           </tr></thead>
           <tbody id="ret-tbody"></tbody>
         </table>
