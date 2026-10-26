@@ -2225,5 +2225,22 @@ async function loadTesting(since, until) {
   }
 }
 
+// Смена даты в поле "С"/"По" сразу перезагружает данные и снимает подсветку
+// пресета ("Сегодня", "7 дней"...). Раньше нужно было ещё нажимать
+// "Показать": если забыть, таблица показывала один период, а в полях стоял
+// другой — и цифры в разных разделах расходились.
+function bindDateAutoApply(sinceSel, untilSel, presetsSel, reload) {
+  for (const sel of [sinceSel, untilSel]) {
+    $(sel).addEventListener('change', () => {
+      if (!$(sinceSel).value || !$(untilSel).value) return;
+      $all(`${presetsSel} .segmented__btn`).forEach((b) => b.classList.remove('is-active'));
+      reload();
+    });
+  }
+}
+bindDateAutoApply('#analytics-since', '#analytics-until', '#analytics-period-presets', () => loadActiveSubtab());
+bindDateAutoApply('#sr-since', '#sr-until', '#sr-period-presets', () => loadSrActiveSubtab());
+bindDateAutoApply('#ret-since', '#ret-until', '#ret-period-presets', () => loadRetention());
+
 // ---------- Старт ----------
 loadBrands();
