@@ -316,11 +316,25 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
 .analytics-table td { font-variant-numeric: tabular-nums; }
 .thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; display: block; }
 .analytics-table__name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.grade-row--Alpha { background: #c8e6c920; }
-.grade-row--Scale { background: #bbdefb20; }
-.grade-row--Test { background: #ffe0b220; }
-.grade-row--Promising { background: #e1bee720; }
-.grade-row--Bedolaga { background: #e6b8b820; }
+.grade-row--Alpha { --row-tint: #c8e6c920; }
+.grade-row--Scale { --row-tint: #bbdefb20; }
+.grade-row--Test { --row-tint: #ffe0b220; }
+.grade-row--Promising { --row-tint: #e1bee720; }
+.grade-row--Bedolaga { --row-tint: #e6b8b820; }
+[class*="grade-row--"] { background: var(--row-tint); }
+
+/* Таблица "Все креативы": первые две колонки (Превью, Название) закреплены
+   слева при горизонтальной прокрутке. Закреплённым ячейкам нужен непрозрачный
+   фон (иначе сквозь них видны уезжающие колонки) — берём цвет панели и
+   поверх него тот же полупрозрачный оттенок грейда, что у строки. */
+#analytics-table th:nth-child(1), #analytics-table td:nth-child(1) { width: 72px; min-width: 72px; max-width: 72px; left: 0; }
+#analytics-table th:nth-child(2), #analytics-table td:nth-child(2) { left: 72px; }
+#analytics-table td:nth-child(1), #analytics-table td:nth-child(2) {
+  position: sticky; z-index: 1;
+  background: linear-gradient(var(--row-tint, transparent), var(--row-tint, transparent)), var(--panel);
+}
+#analytics-table th:nth-child(1), #analytics-table th:nth-child(2) { z-index: 4; }
+#analytics-table th:nth-child(2), #analytics-table td:nth-child(2) { box-shadow: 2px 0 0 var(--line); }
 
 .panel-card--wide { grid-column: 1 / -1; }
 .fmt-tag { display: inline-block; padding: 1px 6px; border-radius: 6px; font-size: 11px; font-weight: 600; background: #eee; color: var(--ink); }
