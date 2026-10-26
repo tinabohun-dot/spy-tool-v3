@@ -435,3 +435,19 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
 .country-popover__foot { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
 
 .fmt-tag--longread { background: #dbe7fc; color: #1d4fa8; }
+
+.ret-funnel { margin-bottom: 14px; }
+.ret-funnel__title { font-weight: 700; margin-bottom: 10px; }
+.ret-steps { display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; }
+.ret-step { background: #f4f7f6; border-radius: 10px; padding: 8px; text-align: center; }
+.ret-step__label { font-size: 11px; color: var(--muted, #777); }
+.ret-step__val { font-weight: 700; font-size: 15px; margin-top: 2px; }
+.ret-step__val small { display: block; font-weight: 600; font-size: 11px; color: #0b6b5c; }
+.ret-toolbar { align-items: flex-end; }
+.ret-field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted, #777); }
+.ret-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 8px; display: block; }
+.ret-name { max-width: 260px; overflow: hidden; text-overflow: ellipsis; }
+.ret-cell { min-width: 70px; }
+.ret-sep { border-left: 2px solid var(--line); }
+.ret-note { margin-top: 10px; }
+@media (max-width: 1100px) { .ret-steps { grid-template-columns: repeat(5, 1fr); } }

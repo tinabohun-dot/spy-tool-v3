@@ -287,6 +287,34 @@ app.get('/api/analytics/success-rate', async (req, res) => {
   }
 });
 
+// Retention: видео-креативы с метриками удержания (hook rate, 25/50/75/100%,
+// среднее время просмотра) и путём после просмотра: клики по ссылке →
+// просмотры лендинга → покупки.
+app.get('/api/analytics/retention', async (req, res) => {
+  try {
+    const { since, until } = req.query;
+    if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until' });
+    const rows = metaMarketing.filterRowsByCampaignMode(
+      await metaMarketing.fetchAllAccountsInsights(since, until), req.query.campaignMode
+    );
+    const creatives = metaMarketing.groupRowsByCreative(rows).map(metaMarketing.buildCreativeEntry)
+      .filter((c) => c.type === 'Video' && c.impressions >= 500 && c.videoPlays > 0);
+    await metaMarketing.attachPreviews(creatives);
+    res.json({
+      since, until,
+      creatives: creatives.map((c) => ({
+        name: c.name, funnel: c.primaryFunnel || 'Другое', grade: c.grade, previewUrl: c.previewUrl,
+        spend: c.spend, impressions: c.impressions, views3s: c.videoViews3s || 0, plays: c.videoPlays,
+        p25: c.videoP25, p50: c.videoP50, p75: c.videoP75, p100: c.videoP100, avgWatch: c.avgWatchTime,
+        linkClicks: c.linkClicks, landingViews: c.landingViews, purchases: c.purchases, cpa: c.cpa
+      }))
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 app.get('/api/analytics/countries', async (req, res) => {
   try {
     const { since, until } = req.query;

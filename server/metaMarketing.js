@@ -496,6 +496,7 @@ function buildCreativeEntry(row) {
     ctr,
     videoPlays: isVideo ? videoPlays : null,
     hookRate,
+    videoViews3s: isVideo ? videoViews3s : null,
     videoP25: isVideo ? getVideoMetric(row.video_p25_watched_actions) : null,
     videoP50: isVideo ? getVideoMetric(row.video_p50_watched_actions) : null,
     videoP75: isVideo ? getVideoMetric(row.video_p75_watched_actions) : null,

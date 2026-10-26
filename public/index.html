@@ -26,6 +26,7 @@
       <button class="side-nav__item" data-view="jobs">Сбор данных</button>
       <button class="side-nav__item" data-view="analytics">Аналитика</button>
       <button class="side-nav__item" data-view="sr">Success Rate</button>
+      <button class="side-nav__item" data-view="ret">Retention</button>
     </nav>
   </aside>
 
@@ -310,6 +311,68 @@
         <p id="tst-footnote" class="hint tst-footnote"></p>
       </div>
 
+    </section>
+
+    <section id="view-ret" class="view" hidden>
+      <div class="view__header">
+        <h1>Retention</h1>
+        <p class="view__sub">Топ видео-креативов по удержанию зрителя и что происходит дальше: клики по ссылке, переход в воронку, покупки.</p>
+      </div>
+      <form id="ret-filters" class="analytics-filters">
+        <div class="segmented" id="ret-period-presets">
+          <button type="button" class="segmented__btn is-active" data-days="0">Сегодня</button>
+          <button type="button" class="segmented__btn" data-days="7">7 дней</button>
+          <button type="button" class="segmented__btn" data-days="14">14 дней</button>
+          <button type="button" class="segmented__btn" data-days="30">30 дней</button>
+          <button type="button" class="segmented__btn" id="ret-closed-week-btn">Закрытая неделя</button>
+        </div>
+        <label class="field"><span class="field__label">С</span><input type="date" id="ret-since" required /></label>
+        <label class="field"><span class="field__label">По</span><input type="date" id="ret-until" required /></label>
+        <button type="submit" class="btn btn--primary">Показать</button>
+      </form>
+      <div id="ret-status" class="status-line"></div>
+
+      <div id="ret-funnel" class="panel-card ret-funnel"></div>
+
+      <div class="analytics-table-toolbar ret-toolbar">
+        <label class="ret-field">Сортировать по
+          <select id="ret-sort" class="select">
+            <option value="p50">Удержание 50%</option>
+            <option value="p25">Удержание 25%</option>
+            <option value="p75">Удержание 75%</option>
+            <option value="p100">Досмотры 100%</option>
+            <option value="hook">Hook Rate</option>
+            <option value="avgWatch">Среднее время просмотра</option>
+            <option value="lpvRate">Переход в воронку (LPV / клики)</option>
+            <option value="buyRate">Покупки / LPV</option>
+            <option value="purchases">Покупки</option>
+          </select>
+        </label>
+        <label class="ret-field">Мин. показов
+          <input type="number" id="ret-min-impr" class="select" value="1000" min="0" step="500" />
+        </label>
+        <label class="ret-field">Кампании
+          <select id="ret-campaign" class="select">
+            <option value="">Все кампании</option>
+            <option value="creo-test">Только CREO-TEST</option>
+            <option value="no-creo-test">Без CREO-TEST</option>
+          </select>
+        </label>
+        <label class="ret-field">Воронка
+          <select id="ret-funnel-filter" class="select"><option value="">Все воронки</option></select>
+        </label>
+      </div>
+      <div class="table-scroll">
+        <table class="table analytics-table ret-table" id="ret-table">
+          <thead><tr>
+            <th>#</th><th>Превью</th><th>Название</th><th>Grade</th><th>Funnel</th><th>Spend</th><th>Показы</th>
+            <th>Hook Rate</th><th>Plays</th><th>25%</th><th>50%</th><th>75%</th><th>100%</th><th>Avg watch</th>
+            <th class="ret-sep">Клики</th><th>CTR</th><th>LPV</th><th>LPV / клики</th><th>Покупки</th><th>Покупки / LPV</th><th>CPA</th>
+          </tr></thead>
+          <tbody id="ret-tbody"></tbody>
+        </table>
+      </div>
+      <p class="hint ret-note">Hook Rate = 3-сек. просмотры / показы. 25/50/75/100% — доля запусков видео (Plays), доживших до этой отметки. LPV — просмотры лендинга (реально пришли на воронку). Креативы с малым числом показов шумят, поэтому есть фильтр «Мин. показов».</p>
     </section>
 
     <section id="view-analytics" class="view" hidden>

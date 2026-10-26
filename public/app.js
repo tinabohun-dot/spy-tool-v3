@@ -49,10 +49,12 @@ $all('.side-nav__item').forEach((btn) => {
     $('#view-jobs').hidden = view !== 'jobs';
     $('#view-analytics').hidden = view !== 'analytics';
     $('#view-sr').hidden = view !== 'sr';
+    $('#view-ret').hidden = view !== 'ret';
     $('#view-brand').hidden = true;
     if (view === 'jobs') startJobsPolling(); else stopJobsPolling();
     if (view === 'analytics') initAnalyticsView();
     if (view === 'sr') initSrView();
+    if (view === 'ret') initRetView();
   });
 });
 
@@ -1654,6 +1656,123 @@ $('#sr-filters').addEventListener('submit', (e) => {
   e.preventDefault();
   $all('#sr-period-presets .segmented__btn').forEach((b) => b.classList.remove('is-active'));
   loadSrActiveSubtab();
+});
+
+// ---------- Retention (отдельный раздел в левом меню) ----------
+let retInited = false;
+let retData = null;
+
+function setRetPeriod(days) {
+  const today = new Date();
+  $('#ret-until').value = today.toISOString().slice(0, 10);
+  $('#ret-since').value = new Date(today.getTime() - days * 86400000).toISOString().slice(0, 10);
+  $all('#ret-period-presets .segmented__btn').forEach((b) => b.classList.toggle('is-active', +b.dataset.days === days));
+}
+
+function initRetView() {
+  if (retInited) return;
+  retInited = true;
+  setRetPeriod(7);
+  loadRetention();
+}
+
+async function loadRetention() {
+  $('#ret-status').textContent = 'Загружаю...';
+  try {
+    const params = new URLSearchParams({ since: $('#ret-since').value, until: $('#ret-until').value });
+    const mode = $('#ret-campaign').value;
+    if (mode) params.set('campaignMode', mode);
+    retData = await fetchJson(`/api/analytics/retention?${params}`);
+    $('#ret-status').textContent = '';
+    const funnels = [...new Set(retData.creatives.map((c) => c.funnel))].sort();
+    const sel = $('#ret-funnel-filter');
+    const prev = sel.value;
+    sel.innerHTML = '<option value="">Все воронки</option>' + funnels.map((f) => `<option value="${srEsc(f)}">${srEsc(f)}</option>`).join('');
+    if (funnels.includes(prev)) sel.value = prev;
+    renderRetention();
+  } catch (err) {
+    $('#ret-status').textContent = 'Ошибка: ' + err.message;
+  }
+}
+
+const retRate = (a, b) => (b > 0 ? a / b : 0);
+function retDerive(c) {
+  return {
+    ...c,
+    hook: retRate(c.views3s, c.impressions),
+    p25r: retRate(c.p25, c.plays), p50r: retRate(c.p50, c.plays), p75r: retRate(c.p75, c.plays), p100r: retRate(c.p100, c.plays),
+    ctr: retRate(c.linkClicks, c.impressions),
+    lpvRate: retRate(c.landingViews, c.linkClicks),
+    buyRate: retRate(c.purchases, c.landingViews)
+  };
+}
+
+function retBarCell(v) {
+  const w = Math.min(100, v * 100);
+  return `<td class="ret-cell" style="background:linear-gradient(90deg,#cfe9dc ${w}%,transparent ${w}%)">${srPct(v)}</td>`;
+}
+
+function renderRetention() {
+  if (!retData) return;
+  const minImpr = +$('#ret-min-impr').value || 0;
+  const funnel = $('#ret-funnel-filter').value;
+  const sortKey = $('#ret-sort').value;
+  const sortMap = { p25: 'p25r', p50: 'p50r', p75: 'p75r', p100: 'p100r', hook: 'hook', avgWatch: 'avgWatch', lpvRate: 'lpvRate', buyRate: 'buyRate', purchases: 'purchases' };
+  const list = retData.creatives.map(retDerive)
+    .filter((c) => c.impressions >= minImpr && (!funnel || c.funnel === funnel))
+    .sort((a, b) => b[sortMap[sortKey]] - a[sortMap[sortKey]]);
+
+  const sum = (k) => list.reduce((s, c) => s + (c[k] || 0), 0);
+  const steps = [
+    ['Показы', sum('impressions')], ['3-сек. просмотры', sum('views3s')], ['Plays', sum('plays')],
+    ['25%', sum('p25')], ['50%', sum('p50')], ['75%', sum('p75')], ['100%', sum('p100')],
+    ['Клики по ссылке', sum('linkClicks')], ['Просмотры лендинга', sum('landingViews')], ['Покупки', sum('purchases')]
+  ];
+  $('#ret-funnel').innerHTML = `<div class="ret-funnel__title">Путь зрителя по ${list.length} креативам <span class="hint">— сколько зрителей доходит до каждого шага</span></div>
+    <div class="ret-steps">${steps.map(([label, v], i) => {
+      const prev = i === 0 ? null : (i === 7 ? steps[2][1] : steps[i - 1][1]);
+      const conv = prev ? ` <small>${srPct(v / prev, v / prev < 0.1 ? 2 : 1)}</small>` : '';
+      return `<div class="ret-step"><div class="ret-step__label">${label}</div><div class="ret-step__val">${Math.round(v).toLocaleString('ru-RU')}${conv}</div></div>`;
+    }).join('')}</div>`;
+
+  $('#ret-tbody').innerHTML = list.map((c, i) => {
+    const gc = GRADE_BADGE_COLORS[c.grade] || { bg: '#eee', color: '#333' };
+    return `<tr>
+      <td>${i + 1}</td>
+      <td>${c.previewUrl ? `<img class="ret-thumb" src="${c.previewUrl}" loading="lazy" />` : ''}</td>
+      <td class="ret-name" title="${srEsc(c.name)}">${srEsc(c.name)}</td>
+      <td><span class="grade-badge" style="background:${gc.bg};color:${gc.color}">${c.grade}</span></td>
+      <td>${srEsc(c.funnel)}</td><td>${srMoney(c.spend)}</td><td>${c.impressions.toLocaleString('ru-RU')}</td>
+      ${retBarCell(c.hook)}<td>${Math.round(c.plays).toLocaleString('ru-RU')}</td>
+      ${retBarCell(c.p25r)}${retBarCell(c.p50r)}${retBarCell(c.p75r)}${retBarCell(c.p100r)}
+      <td>${c.avgWatch ? c.avgWatch.toFixed(1) + 's' : '—'}</td>
+      <td class="ret-sep">${c.linkClicks}</td><td>${srPct(c.ctr, 2)}</td><td>${c.landingViews}</td><td>${srPct(c.lpvRate)}</td>
+      <td><strong>${c.purchases}</strong></td><td>${srPct(c.buyRate)}</td><td>${c.cpa ? '$' + Math.round(c.cpa) : '—'}</td></tr>`;
+  }).join('') || '<tr><td colspan="21" class="hint">Нет видео-креативов под эти фильтры</td></tr>';
+}
+
+$('#ret-sort').addEventListener('change', renderRetention);
+$('#ret-min-impr').addEventListener('input', renderRetention);
+$('#ret-funnel-filter').addEventListener('change', renderRetention);
+$('#ret-campaign').addEventListener('change', loadRetention);
+$('#ret-period-presets').addEventListener('click', (e) => {
+  const btn = e.target.closest('.segmented__btn');
+  if (!btn || btn.id === 'ret-closed-week-btn') return;
+  setRetPeriod(+btn.dataset.days);
+  loadRetention();
+});
+$('#ret-closed-week-btn').addEventListener('click', () => {
+  const today = new Date();
+  const thisMonday = new Date(today.getTime() - ((today.getDay() + 6) % 7) * 86400000);
+  $('#ret-since').value = new Date(thisMonday.getTime() - 7 * 86400000).toISOString().slice(0, 10);
+  $('#ret-until').value = new Date(thisMonday.getTime() - 86400000).toISOString().slice(0, 10);
+  $all('#ret-period-presets .segmented__btn').forEach((b) => b.classList.toggle('is-active', b.id === 'ret-closed-week-btn'));
+  loadRetention();
+});
+$('#ret-filters').addEventListener('submit', (e) => {
+  e.preventDefault();
+  $all('#ret-period-presets .segmented__btn').forEach((b) => b.classList.remove('is-active'));
+  loadRetention();
 });
 
 // ---------- Success Rate ----------
