@@ -305,8 +305,10 @@ app.get('/api/analytics/retention', async (req, res) => {
         ))
       : await metaMarketing.fetchAllAccountsInsights(since, until);
     const rows = metaMarketing.filterRowsByCampaignMode(rawRows, req.query.campaignMode);
-    const creatives = metaMarketing.groupRowsByCreative(rows).map(metaMarketing.buildCreativeEntry)
-      .filter((c) => c.type === 'Video' && c.impressions >= 500 && c.videoPlays > 0);
+    const allCreatives = metaMarketing.groupRowsByCreative(rows).map(metaMarketing.buildCreativeEntry);
+    // Жёсткого порога по показам на сервере нет — "Мин. показов" регулирует
+    // фронт; иначе малотрафиковые видео нельзя было бы показать вообще.
+    const creatives = allCreatives.filter((c) => c.type === 'Video' && c.impressions > 0 && c.videoPlays > 0);
     // Длительность видео — с Google Drive (по названию креатива), параллельно с превью.
     const googleDrive = require('./googleDrive');
     const lengthsPromise = (async () => {
@@ -326,6 +328,7 @@ app.get('/api/analytics/retention', async (req, res) => {
     };
     res.json({
       since, until,
+      totals: { all: allCreatives.length, video: creatives.length, nonVideo: allCreatives.length - creatives.length },
       creatives: creatives.map((c) => ({
         adId: c.adId, videoLength: c.videoLength ?? null, name: c.name, funnel: c.primaryFunnel || 'Другое', grade: c.grade, previewUrl: c.previewUrl,
         spend: c.spend, impressions: c.impressions, views3s: c.videoViews3s || 0, plays: c.videoPlays,
