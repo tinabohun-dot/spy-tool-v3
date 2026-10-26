@@ -665,28 +665,37 @@ async function fetchVideoLength(videoId) {
 const videoLengthErrors = [];
 
 // Прямое чтение видео-объекта токену запрещено ((#10) нет прав), зато список
-// видео рекламного аккаунта (/advideos) читается — берём длины оттуда и
-// кэшируем на 30 минут.
-let accountVideosCache = null; // { at, map }
-async function loadAccountVideoLengths() {
-  if (accountVideosCache && Date.now() - accountVideosCache.at < 30 * 60 * 1000) return accountVideosCache.map;
-  const map = {};
+// видео рекламного аккаунта (/advideos) читается — берём длины оттуда.
+// Видео в аккаунте много, поэтому листаем маленькими страницами и
+// останавливаемся, как только нашли все нужные; найденное копим в кэше.
+const accountVideoLengths = {};
+const advideosDone = new Set(); // аккаунты, которые уже прочитали до конца
+async function loadAccountVideoLengths(neededIds) {
+  const missing = () => neededIds.filter((id) => accountVideoLengths[id] == null);
+  if (!missing().length) return accountVideoLengths;
   await Promise.all(Object.values(accounts()).map(async (accId) => {
+    if (advideosDone.has(accId)) return;
     try {
       const url = new URL(`https://graph.facebook.com/${API_VERSION}/${accId}/advideos`);
       url.searchParams.set('fields', 'length');
-      url.searchParams.set('limit', '500');
+      url.searchParams.set('limit', '100');
       url.searchParams.set('access_token', token());
-      for (const v of await paginate(url.toString())) if (typeof v.length === 'number') map[v.id] = v.length;
+      let next = url.toString();
+      for (let page = 0; next && page < 80 && missing().length; page++) {
+        const json = await (await fetch(next)).json();
+        if (json.error) throw new Error(json.error.message);
+        for (const v of json.data || []) if (typeof v.length === 'number') accountVideoLengths[v.id] = v.length;
+        next = json.paging?.next || null;
+        if (!next) advideosDone.add(accId);
+      }
     } catch (err) { videoLengthErrors.push('advideos: ' + err.message); }
   }));
-  accountVideosCache = { at: Date.now(), map };
-  return map;
+  return accountVideoLengths;
 }
 
 // Требует предварительного attachPreviews (там подтягивается video_id).
 async function attachVideoLengths(creatives) {
-  const lengths = await loadAccountVideoLengths();
+  const lengths = await loadAccountVideoLengths([...new Set(creatives.map((c) => adInfoCache.get(c.adId)?.videoId).filter(Boolean))]);
   for (const c of creatives) {
     const vid = adInfoCache.get(c.adId)?.videoId;
     c.videoLength = (vid && lengths[vid]) || null;
