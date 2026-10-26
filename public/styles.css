@@ -301,7 +301,10 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
   max-height: calc(100vh - var(--analytics-sticky-offset, 0px) - 32px);
   overflow-y: auto;
 }
-.analytics-table { white-space: nowrap; }
+/* .table по умолчанию overflow:hidden (для скруглений) — это делало саму
+   таблицу контейнером для position:sticky, и шапка уезжала вместе со строками.
+   Скругление обеспечивает внешний .table-scroll. */
+.analytics-table { white-space: nowrap; overflow: visible; }
 .analytics-sticky-top { position: sticky; top: 0; z-index: 3; background: var(--bg); padding-top: 4px; }
 /* Липкая шапка — на любой таблице с этим базовым классом .table, не только
    на "аналитических": строка заголовков должна оставаться на месте при
