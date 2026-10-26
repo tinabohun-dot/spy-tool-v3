@@ -1109,7 +1109,7 @@ async function openAdPreview(adId, adName) {
   }
 }
 
-for (const tbodyId of ['#analytics-tbody', '#tops-tbody', '#ret-tbody']) {
+for (const tbodyId of ['#analytics-tbody', '#tops-tbody', '#ret-tbody', '#drop-detail']) {
   $(tbodyId).addEventListener('click', (e) => {
     const img = e.target.closest('.thumb[data-ad-id]');
     if (!img) return;
@@ -1826,22 +1826,66 @@ function dropClickParts(t) {
   return [(t.linkClicks - t.landingViews) / cl, (t.landingViews - t.purchases) / cl, t.purchases / cl].map((v) => Math.max(0, v) * 100);
 }
 
-function dropStepRow(label, value, base, prev, color) {
-  const pctOfBase = base > 0 ? value / base : 0;
-  const lost = prev > 0 ? 1 - value / prev : null;
-  return `<div class="drop-row"><span class="drop-row__label">${label}</span>
-    <span class="drop-row__track"><span class="drop-row__fill" style="width:${Math.max(0.6, Math.min(100, pctOfBase * 100))}%;background:${color}"></span></span>
-    <span class="drop-row__val">${srPct(pctOfBase, pctOfBase < 0.1 ? 2 : 1)} <small>(${Math.round(value).toLocaleString('ru-RU')})</small></span>
-    <span class="drop-row__lost">${lost !== null && lost > 0 ? '−' + srPct(lost, 1) : ''}</span></div>`;
+// "Воронка отсева": для каждого шага — сколько зрителей дошло (в % от первого
+// шага блока и абсолютным числом) и сколько потерялось относительно предыдущего
+// шага. Колонки — "Все" и каждая воронка отдельно, чтобы сравнивать
+// проходимость воронок между собой.
+const DROP_GROUPS = [
+  ['До клика (показы = 100%)', '#4285f4', [['Показы', (t) => t.impressions], ['Plays', (t) => t.plays], ['3-сек. просмотры', (t) => t.views3s], ['Клики по ссылке', (t) => t.linkClicks]]],
+  ['Просмотр видео (Plays = 100%)', '#2ea56f', [['Plays', (t) => t.plays], ['25%', (t) => t.p25], ['50%', (t) => t.p50], ['75%', (t) => t.p75], ['100%', (t) => t.p100]]],
+  ['После клика (клики = 100%)', '#d95f2b', [['Клики', (t) => t.linkClicks], ['Просмотр лендинга', (t) => t.landingViews], ['Покупки', (t) => t.purchases]]]
+];
+
+function renderDropSummary(list) {
+  const funnels = [...new Set(list.map((c) => c.funnel))]
+    .map((name) => ({ name, items: list.filter((c) => c.funnel === name) }))
+    .sort((a, b) => b.items.reduce((x, c) => x + c.impressions, 0) - a.items.reduce((x, c) => x + c.impressions, 0));
+  const cols = [{ name: 'Все', t: dropAggregate(list), n: list.length }, ...funnels.map((f) => ({ name: f.name, t: dropAggregate(f.items), n: f.items.length }))];
+
+  $('#drop-summary').innerHTML = DROP_GROUPS.map(([title, color, steps]) => {
+    const head = `<tr><th>${title}</th>${cols.map((c) => `<th>${srEsc(c.name)}<small>${c.n} креат.</small></th>`).join('')}</tr>`;
+    const rows = steps.map(([label, fn], i) => `<tr><td class="drop-table__step">${label}</td>${cols.map((c) => {
+      const v = fn(c.t), base = steps[0][1](c.t), prev = i ? steps[i - 1][1](c.t) : 0;
+      const pct = base > 0 ? v / base : 0;
+      const lost = prev > 0 ? 1 - v / prev : null;
+      const w = Math.max(0.6, Math.min(100, pct * 100));
+      return `<td class="drop-table__cell" style="background:linear-gradient(90deg,${color}33 ${w}%,transparent ${w}%)">
+        <strong>${srPct(pct, pct < 0.1 ? 2 : 1)}</strong> <small>${Math.round(v).toLocaleString('ru-RU')}</small>
+        ${lost !== null && lost > 0 ? `<span class="drop-table__lost">−${srPct(lost, 1)}</span>` : ''}</td>`;
+    }).join('')}</tr>`).join('');
+    return `<div class="fmt-table-wrap"><table class="table drop-table"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
+  }).join('');
 }
 
-function renderDropSummary(t) {
-  const group = (title, steps, color) => `<div class="drop-group"><div class="drop-group__title">${title}</div>
-    ${steps.map(([label, v], i) => dropStepRow(label, v, steps[0][1], i ? steps[i - 1][1] : 0, color)).join('')}</div>`;
-  $('#drop-summary').innerHTML =
-    group('До клика (показы = 100%)', [['Показы', t.impressions], ['Plays', t.plays], ['3-сек. просмотры', t.views3s], ['Клики по ссылке', t.linkClicks]], '#4285f4') +
-    group('Просмотр видео (Plays = 100%)', [['Plays', t.plays], ['25%', t.p25], ['50%', t.p50], ['75%', t.p75], ['100%', t.p100]], '#2ea56f') +
-    group('После клика (клики = 100%)', [['Клики', t.linkClicks], ['Просмотр лендинга', t.landingViews], ['Покупки', t.purchases]], '#d95f2b');
+let dropGroups = [];
+let dropSelected = null;
+
+// Список креативов выбранного столбика (воронки или одного креатива) с
+// метриками удержания и путём после клика.
+function renderDropDetail(label, scroll) {
+  const g = dropGroups.find((x) => x.label === label);
+  if (!g) return;
+  dropSelected = label;
+  const bySec = $('#drop-scale').value === 'sec';
+  const items = g.items.map(retDerive).sort((a, b) => b.spend - a.spend);
+  const cell = (v) => (v == null ? '—' : srPct(v));
+  const rows = items.map((c) => {
+    const gc = GRADE_BADGE_COLORS[c.grade] || { bg: '#eee', color: '#333' };
+    const rets = bySec ? [c.t3, c.t5, c.t10, c.t15] : [c.p25r, c.p50r, c.p75r, c.p100r];
+    return `<tr>
+      <td>${c.previewUrl ? `<img class="thumb ret-thumb" src="${c.previewUrl}" loading="lazy" data-ad-id="${c.adId}" data-ad-name="${srEsc(c.name)}" title="Кликни, чтобы посмотреть крео" />` : ''}</td>
+      <td class="ret-name" title="${srEsc(c.name)}">${srEsc(c.name)}</td>
+      <td><span class="grade-badge" style="background:${gc.bg};color:${gc.color}">${c.grade}</span></td>
+      <td>${srMoney(c.spend)}</td><td>${Math.round(c.plays).toLocaleString('ru-RU')}</td>
+      ${rets.map((v) => `<td>${cell(v)}</td>`).join('')}
+      <td class="ret-sep">${c.linkClicks}</td><td>${c.landingViews}</td><td>${srPct(c.lpvRate)}</td><td><strong>${c.purchases}</strong></td><td>${c.cpa ? '$' + Math.round(c.cpa) : '—'}</td></tr>`;
+  }).join('');
+  const heads = bySec ? ['3 сек', '5 сек', '10 сек', '15 сек'] : ['25%', '50%', '75%', '100%'];
+  $('#drop-detail').innerHTML = `<h4>Креативы: ${srEsc(label)} <span class="hint">— ${items.length} шт., по убыванию spend</span></h4>
+    <div class="table-scroll"><table class="table analytics-table"><thead><tr><th>Превью</th><th>Название</th><th>Grade</th><th>Spend</th><th>Plays</th>
+    ${heads.map((h) => `<th>${h}</th>`).join('')}<th class="ret-sep">Клики</th><th>LPV</th><th>LPV / клики</th><th>Покупки</th><th>CPA</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  $('#drop-detail').hidden = false;
+  if (scroll) $('#drop-detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function dropShortName(name) {
@@ -1863,6 +1907,11 @@ function renderDropCharts(groups) {
       options: {
         indexAxis: 'y',
         maintainAspectRatio: false,
+        onClick: (evt, els, chart) => {
+          const hit = chart.getElementsAtEventForMode(evt, 'nearest', { intersect: false, axis: 'y' }, true)[0];
+          if (hit) renderDropDetail(groups[hit.index].label, true);
+        },
+        onHover: (evt, els, chart) => { evt.native.target.style.cursor = 'pointer'; },
         plugins: {
           legend: { position: 'top' },
           tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${ctx.parsed.x.toFixed(1)}%` } }
@@ -1892,19 +1941,22 @@ function renderDropoff() {
     return;
   }
   const total = dropAggregate(list);
-  renderDropSummary(total);
+  renderDropSummary(list);
 
   let groups;
   if ($('#drop-group').value === 'funnels') {
     const names = [...new Set(list.map((c) => c.funnel))];
-    groups = names.map((n) => ({ label: n, t: dropAggregate(list.filter((c) => c.funnel === n)), spend: list.filter((c) => c.funnel === n).reduce((a, c) => a + c.spend, 0) }))
+    groups = names.map((n) => { const items = list.filter((c) => c.funnel === n); return { label: n, items, t: dropAggregate(items), spend: items.reduce((a, c) => a + c.spend, 0) }; })
       .sort((a, b) => b.spend - a.spend);
   } else {
     const n = +$('#drop-top').value;
-    groups = list.slice().sort((a, b) => b.spend - a.spend).slice(0, n).map((c) => ({ label: dropShortName(c.name), t: dropAggregate([c]) }));
+    groups = list.slice().sort((a, b) => b.spend - a.spend).slice(0, n).map((c) => ({ label: dropShortName(c.name), items: [c], t: dropAggregate([c]) }));
   }
-  groups.unshift({ label: 'Все', t: total });
+  groups.unshift({ label: 'Все', items: list, t: total });
+  dropGroups = groups;
   renderDropCharts(groups);
+  if (dropSelected != null && !groups.some((g) => g.label === dropSelected)) { dropSelected = null; $('#drop-detail').hidden = true; }
+  else if (dropSelected != null) renderDropDetail(dropSelected);
 }
 
 $('#ret-subtabs').addEventListener('click', (e) => {

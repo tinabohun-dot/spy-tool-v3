@@ -481,3 +481,12 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
 .drop-row__val small { color: var(--muted, #777); }
 .drop-row__lost { color: #d9534f; font-weight: 600; font-size: 12px; text-align: right; }
 @media (max-width: 800px) { .drop-row { grid-template-columns: 110px 1fr 110px 60px; } }
+
+.drop-table { margin-bottom: 14px; }
+.drop-table th { white-space: nowrap; font-size: 12px; }
+.drop-table th small { display: block; font-weight: 400; color: var(--muted, #777); }
+.drop-table__step { white-space: nowrap; color: #2b3a67; }
+.drop-table__cell { white-space: nowrap; min-width: 130px; }
+.drop-table__cell small { color: var(--muted, #777); margin-left: 4px; }
+.drop-table__lost { color: #d9534f; font-weight: 600; font-size: 11px; margin-left: 6px; }
+#drop-detail h4 { margin: 0 0 8px; }
