@@ -490,3 +490,14 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
 .drop-table__cell small { color: var(--muted, #777); margin-left: 4px; }
 .drop-table__lost { color: #d9534f; font-weight: 600; font-size: 11px; margin-left: 6px; }
 #drop-detail h4 { margin: 0 0 8px; }
+
+.viz-card { margin-bottom: 14px; }
+.viz { display: flex; align-items: flex-end; gap: 14px; padding-top: 34px; overflow-x: auto; }
+.viz__col { flex: 1; min-width: 70px; display: flex; flex-direction: column; }
+.viz__stack { position: relative; height: 260px; display: flex; flex-direction: column; justify-content: flex-end; border-bottom: 1px solid var(--line); }
+.viz__hatch { background: repeating-linear-gradient(135deg, #bcd0f7 0 4px, #e6eefc 4px 8px); }
+.viz__solid { background: #3366e6; }
+.viz__bubble { position: absolute; left: 50%; transform: translate(-50%, 50%); background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 2px 8px; text-align: center; box-shadow: 0 1px 4px rgba(0,0,0,.1); white-space: nowrap; font-size: 12px; }
+.viz__bubble b { display: block; font-size: 13px; }
+.viz__bubble span { color: var(--muted, #777); font-size: 11px; }
+.viz__label { text-align: center; font-size: 12px; margin-top: 8px; color: #2b3a67; }

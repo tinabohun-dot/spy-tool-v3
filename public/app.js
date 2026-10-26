@@ -1714,6 +1714,7 @@ function retDerive(c) {
     ...c,
     hook: retRate(c.views3s, c.impressions),
     t3: retSec(c, 3), t5: retSec(c, 5), t10: retSec(c, 10), t15: retSec(c, 15),
+    avgPct: c.videoLength > 0 && c.avgWatch ? Math.min(1, c.avgWatch / c.videoLength) : null,
     p25r: retRate(c.p25, c.plays), p50r: retRate(c.p50, c.plays), p75r: retRate(c.p75, c.plays), p100r: retRate(c.p100, c.plays),
     ctr: retRate(c.linkClicks, c.impressions),
     lpvRate: retRate(c.landingViews, c.linkClicks),
@@ -1781,12 +1782,15 @@ function renderRetention() {
       ${retBarCell(c.t3)}${retBarCell(c.t5)}${retBarCell(c.t10)}${retBarCell(c.t15)}
       ${retBarCell(c.p25r)}${retBarCell(c.p50r)}${retBarCell(c.p75r)}${retBarCell(c.p100r)}
       <td>${c.avgWatch ? c.avgWatch.toFixed(1) + 's' : '—'}</td>
+      <td>${c.videoLength ? Math.round(c.videoLength) + 's' : '—'}</td>
+      ${retBarCell(c.avgPct)}
       <td class="ret-sep">${c.linkClicks}</td><td>${srPct(c.ctr, 2)}</td><td>${c.landingViews}</td><td>${srPct(c.lpvRate)}</td>
       <td><strong>${c.purchases}</strong></td><td>${srPct(c.buyRate)}</td><td>${c.cpa ? '$' + Math.round(c.cpa) : '—'}</td></tr>`;
-  }).join('') || '<tr><td colspan="25" class="hint">Нет видео-креативов под эти фильтры</td></tr>';
+  }).join('') || '<tr><td colspan="27" class="hint">Нет видео-креативов под эти фильтры</td></tr>';
 
   retFiltered = list;
   if ($('#subtab-ret-drop').classList.contains('is-active')) renderDropoff();
+  if ($('#subtab-ret-viz').classList.contains('is-active')) renderViz();
 }
 
 let retFiltered = [];
@@ -1959,6 +1963,53 @@ function renderDropoff() {
   else if (dropSelected != null) renderDropDetail(dropSelected);
 }
 
+// ---------- Воронка (график): синий — дошли, штриховка — потеряли ----------
+const VIZ_H = 260;
+
+function vizSteps(t, path) {
+  if (path === 'video') {
+    const steps = [['Plays', t.plays]];
+    if (t.sec) [['3 сек', 0], ['5 сек', 1], ['10 сек', 2], ['15 сек', 3]].forEach(([l, i]) => steps.push([l, t.plays * t.sec[i] / 100]));
+    steps.push(['25%', t.p25], ['50%', t.p50], ['75%', t.p75], ['100%', t.p100]);
+    return steps;
+  }
+  return [['Показы', t.impressions], ['Plays', t.plays], ['3-сек. просмотры', t.views3s], ['Клики', t.linkClicks], ['Просмотр лендинга', t.landingViews], ['Покупки', t.purchases]];
+}
+
+function vizChartHtml(title, count, steps) {
+  const base = steps[0][1] || 1;
+  let prev = 1;
+  const cols = steps.map(([label, v]) => {
+    const pct = Math.max(0, v / base);
+    const solid = Math.max(2, pct * VIZ_H);
+    const hatch = Math.max(0, (prev - pct) * VIZ_H);
+    const html = `<div class="viz__col">
+      <div class="viz__stack">
+        ${hatch > 0.5 ? `<div class="viz__hatch" style="height:${hatch}px"></div>` : ''}
+        <div class="viz__solid" style="height:${solid}px"></div>
+        <div class="viz__bubble" style="bottom:${solid}px"><b>${srPct(pct, pct < 0.1 ? 2 : 1)}</b><span>${Math.round(v).toLocaleString('ru-RU')}</span></div>
+      </div>
+      <div class="viz__label">${label}</div></div>`;
+    prev = pct;
+    return html;
+  }).join('');
+  return `<div class="panel-card viz-card"><h4>${srEsc(title)} <span class="hint">— ${count} креат.</span></h4><div class="viz">${cols}</div></div>`;
+}
+
+function renderViz() {
+  const list = retFiltered;
+  const path = $('#viz-path').value;
+  if (!list.length) { $('#viz-charts').innerHTML = '<p class="hint">Нет видео-креативов под эти фильтры</p>'; return; }
+  const funnels = [...new Set(list.map((c) => c.funnel))]
+    .map((name) => ({ name, items: list.filter((c) => c.funnel === name) }))
+    .sort((a, b) => b.items.reduce((x, c) => x + c.impressions, 0) - a.items.reduce((x, c) => x + c.impressions, 0));
+  $('#viz-charts').innerHTML = [
+    vizChartHtml('Все воронки', list.length, vizSteps(dropAggregate(list), path)),
+    ...funnels.map((f) => vizChartHtml(f.name, f.items.length, vizSteps(dropAggregate(f.items), path)))
+  ].join('');
+}
+$('#viz-path').addEventListener('change', renderViz);
+
 $('#ret-subtabs').addEventListener('click', (e) => {
   const btn = e.target.closest('.tab');
   if (!btn) return;
@@ -1966,6 +2017,7 @@ $('#ret-subtabs').addEventListener('click', (e) => {
   $all('#ret-subtabs .tab').forEach((b) => b.classList.toggle('is-active', b === btn));
   $all('#view-ret .tab-panel').forEach((p) => p.classList.toggle('is-active', p.id === `subtab-${retSubtab}`));
   if (retSubtab === 'ret-drop') renderDropoff();
+  if (retSubtab === 'ret-viz') renderViz();
 });
 $('#drop-group').addEventListener('change', () => {
   $('#drop-top').disabled = $('#drop-group').value === 'funnels';

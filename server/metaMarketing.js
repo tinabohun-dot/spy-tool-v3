@@ -575,16 +575,17 @@ async function fetchAdInfo(adId) {
   let info;
   try {
     const url = new URL(`https://graph.facebook.com/${API_VERSION}/${adId}`);
-    url.searchParams.set('fields', 'creative{thumbnail_url,image_url},effective_status');
+    url.searchParams.set('fields', 'creative{thumbnail_url,image_url,video_id},effective_status');
     url.searchParams.set('access_token', token());
     const resp = await fetch(url.toString());
     const json = await resp.json();
     info = {
       previewUrl: json?.creative?.thumbnail_url || json?.creative?.image_url || null,
-      status: json?.effective_status || null
+      status: json?.effective_status || null,
+      videoId: json?.creative?.video_id || null
     };
   } catch {
-    info = { previewUrl: null, status: null };
+    info = { previewUrl: null, status: null, videoId: null };
   }
   adInfoCache.set(adId, info);
   return info;
@@ -637,7 +638,36 @@ async function attachPreviews(creatives) {
   return creatives;
 }
 
+// Длина видео (сек) — чтобы сравнивать среднее время просмотра с полной
+// длиной ролика. Берём video_id из креатива объявления и читаем length у
+// самого видео; результат кэшируем. Если Meta не отдаёт длину (нет доступа к
+// видео / динамический креатив), поле остаётся null.
+const videoLengthCache = new Map();
+async function fetchVideoLength(videoId) {
+  if (!videoId) return null;
+  if (videoLengthCache.has(videoId)) return videoLengthCache.get(videoId);
+  let length = null;
+  try {
+    const url = new URL(`https://graph.facebook.com/${API_VERSION}/${videoId}`);
+    url.searchParams.set('fields', 'length');
+    url.searchParams.set('access_token', token());
+    const json = await (await fetch(url.toString())).json();
+    length = typeof json?.length === 'number' ? json.length : null;
+  } catch { /* оставляем null */ }
+  videoLengthCache.set(videoId, length);
+  return length;
+}
+
+// Требует предварительного attachPreviews (там подтягивается video_id).
+async function attachVideoLengths(creatives) {
+  const ids = [...new Set(creatives.map((c) => adInfoCache.get(c.adId)?.videoId).filter(Boolean))];
+  await mapConcurrent(ids, 8, fetchVideoLength);
+  for (const c of creatives) c.videoLength = videoLengthCache.get(adInfoCache.get(c.adId)?.videoId) ?? null;
+  return creatives;
+}
+
 module.exports = {
+  attachVideoLengths,
   accounts, fetchAllAccountsInsights, fetchAccountInsights,
   fetchAllAccountsInsightsBreakdown, fetchVideoCurves, fetchCountrySpend, filterRowsByCountries, collapseCountryRows,
   groupRowsByCreative, buildCreativeEntry, summarize, attachPreviews, filterRowsByCampaignMode,

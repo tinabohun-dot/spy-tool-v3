@@ -308,6 +308,7 @@ app.get('/api/analytics/retention', async (req, res) => {
     const creatives = metaMarketing.groupRowsByCreative(rows).map(metaMarketing.buildCreativeEntry)
       .filter((c) => c.type === 'Video' && c.impressions >= 500 && c.videoPlays > 0);
     const [curves] = await Promise.all([curvesPromise, metaMarketing.attachPreviews(creatives)]);
+    await metaMarketing.attachVideoLengths(creatives);
     const curveFor = (c) => {
       const ids = (c.adIds || [c.adId]).map((id) => curves[id]).filter((x) => x && x.curve);
       if (!ids.length) return { curve: null, thru15: 0 };
@@ -319,7 +320,7 @@ app.get('/api/analytics/retention', async (req, res) => {
     res.json({
       since, until,
       creatives: creatives.map((c) => ({
-        adId: c.adId, name: c.name, funnel: c.primaryFunnel || 'Другое', grade: c.grade, previewUrl: c.previewUrl,
+        adId: c.adId, videoLength: c.videoLength ?? null, name: c.name, funnel: c.primaryFunnel || 'Другое', grade: c.grade, previewUrl: c.previewUrl,
         spend: c.spend, impressions: c.impressions, views3s: c.videoViews3s || 0, plays: c.videoPlays,
         p25: c.videoP25, p50: c.videoP50, p75: c.videoP75, p100: c.videoP100, avgWatch: c.avgWatchTime,
         linkClicks: c.linkClicks, landingViews: c.landingViews, purchases: c.purchases, cpa: c.cpa,

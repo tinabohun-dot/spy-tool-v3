@@ -335,6 +335,7 @@
       <div class="tabs" id="ret-subtabs">
         <button type="button" class="tab is-active" data-subtab="ret-top">Топ по удержанию</button>
         <button type="button" class="tab" data-subtab="ret-drop">Доходимость</button>
+        <button type="button" class="tab" data-subtab="ret-viz">Воронка (график)</button>
       </div>
 
       <div class="analytics-table-toolbar ret-toolbar">
@@ -389,6 +390,7 @@
               <option value="p100r">Досмотры 100%</option>
               <option value="hook">Hook Rate</option>
               <option value="avgWatch">Среднее время просмотра</option>
+              <option value="avgPct">Avg watch / длина видео</option>
               <option value="lpvRate">Переход в воронку (LPV / клики)</option>
               <option value="buyRate">Покупки / LPV</option>
               <option value="purchases">Покупки</option>
@@ -401,14 +403,27 @@
               <th>#</th><th>Превью</th><th data-sort="name">Название</th><th data-sort="grade">Grade</th><th data-sort="funnel">Funnel</th>
               <th data-sort="spend">Spend</th><th data-sort="impressions">Показы</th>
               <th data-sort="hook">Hook Rate</th><th data-sort="plays">Plays</th><th data-sort="t3">3 сек</th><th data-sort="t5">5 сек</th><th data-sort="t10">10 сек</th><th data-sort="t15">15 сек</th><th data-sort="p25r">25%</th><th data-sort="p50r">50%</th>
-              <th data-sort="p75r">75%</th><th data-sort="p100r">100%</th><th data-sort="avgWatch">Avg watch</th>
+              <th data-sort="p75r">75%</th><th data-sort="p100r">100%</th><th data-sort="avgWatch">Avg watch</th><th data-sort="videoLength">Длина видео</th><th data-sort="avgPct">Avg watch / длина</th>
               <th class="ret-sep" data-sort="linkClicks">Клики</th><th data-sort="ctr">CTR</th><th data-sort="landingViews">LPV</th>
               <th data-sort="lpvRate">LPV / клики</th><th data-sort="purchases">Покупки</th><th data-sort="buyRate">Покупки / LPV</th><th data-sort="cpa">CPA</th>
             </tr></thead>
             <tbody id="ret-tbody"></tbody>
           </table>
         </div>
-        <p class="hint ret-note">Hook Rate = 3-сек. просмотры / показы. 25/50/75/100% — доля запусков видео (Plays), доживших до этой отметки. LPV — просмотры лендинга (реально пришли на воронку). Креативы с малым числом показов шумят, поэтому есть фильтр «Мин. показов».</p>
+        <p class="hint ret-note">Hook Rate = 3-сек. просмотры / показы. Avg watch / длина — какую долю ролика зритель в среднем смотрит (длина видео берётся из Meta; если Meta её не отдала — прочерк). 25/50/75/100% — доля запусков видео (Plays), доживших до этой отметки. LPV — просмотры лендинга (реально пришли на воронку). Креативы с малым числом показов шумят, поэтому есть фильтр «Мин. показов».</p>
+      </div>
+
+      <div id="subtab-ret-viz" class="tab-panel">
+        <div class="analytics-table-toolbar ret-toolbar">
+          <label class="ret-field">Путь зрителя
+            <select id="viz-path" class="select">
+              <option value="conv">Показ → просмотр → клик → лендинг → покупка</option>
+              <option value="video">Удержание видео (секунды и 25/50/75/100%)</option>
+            </select>
+          </label>
+        </div>
+        <p class="hint">Синий столбик — сколько зрителей дошло до шага (в % от первого шага), штриховка — сколько потерялось относительно предыдущего шага. Первый график — все воронки вместе, ниже — каждая воронка отдельно.</p>
+        <div id="viz-charts"></div>
       </div>
 
       <div id="subtab-ret-drop" class="tab-panel">
