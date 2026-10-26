@@ -664,11 +664,33 @@ async function fetchVideoLength(videoId) {
 }
 const videoLengthErrors = [];
 
+// Прямое чтение видео-объекта токену запрещено ((#10) нет прав), зато список
+// видео рекламного аккаунта (/advideos) читается — берём длины оттуда и
+// кэшируем на 30 минут.
+let accountVideosCache = null; // { at, map }
+async function loadAccountVideoLengths() {
+  if (accountVideosCache && Date.now() - accountVideosCache.at < 30 * 60 * 1000) return accountVideosCache.map;
+  const map = {};
+  await Promise.all(Object.values(accounts()).map(async (accId) => {
+    try {
+      const url = new URL(`https://graph.facebook.com/${API_VERSION}/${accId}/advideos`);
+      url.searchParams.set('fields', 'length');
+      url.searchParams.set('limit', '500');
+      url.searchParams.set('access_token', token());
+      for (const v of await paginate(url.toString())) if (typeof v.length === 'number') map[v.id] = v.length;
+    } catch (err) { videoLengthErrors.push('advideos: ' + err.message); }
+  }));
+  accountVideosCache = { at: Date.now(), map };
+  return map;
+}
+
 // Требует предварительного attachPreviews (там подтягивается video_id).
 async function attachVideoLengths(creatives) {
-  const ids = [...new Set(creatives.map((c) => adInfoCache.get(c.adId)?.videoId).filter(Boolean))];
-  await mapConcurrent(ids, 8, fetchVideoLength);
-  for (const c of creatives) c.videoLength = videoLengthCache.get(adInfoCache.get(c.adId)?.videoId) ?? null;
+  const lengths = await loadAccountVideoLengths();
+  for (const c of creatives) {
+    const vid = adInfoCache.get(c.adId)?.videoId;
+    c.videoLength = (vid && lengths[vid]) || null;
+  }
   attachVideoLengths.lastDebug = {
     creatives: creatives.length,
     withVideoId: creatives.filter((c) => adInfoCache.get(c.adId)?.videoId).length,
