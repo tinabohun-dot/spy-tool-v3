@@ -1769,7 +1769,125 @@ function renderRetention() {
       <td class="ret-sep">${c.linkClicks}</td><td>${srPct(c.ctr, 2)}</td><td>${c.landingViews}</td><td>${srPct(c.lpvRate)}</td>
       <td><strong>${c.purchases}</strong></td><td>${srPct(c.buyRate)}</td><td>${c.cpa ? '$' + Math.round(c.cpa) : '—'}</td></tr>`;
   }).join('') || '<tr><td colspan="21" class="hint">Нет видео-креативов под эти фильтры</td></tr>';
+
+  retFiltered = list;
+  if ($('#subtab-ret-drop').classList.contains('is-active')) renderDropoff();
 }
+
+let retFiltered = [];
+let retSubtab = 'ret-top';
+
+// ---------- Доходимость: где отваливаются зрители ----------
+const DROP_VIDEO = [
+  ['Ушли до 25%', '#d9534f'], ['25 → 50%', '#e8793a'], ['50 → 75%', '#f2b94c'], ['75 → 100%', '#9cc66a'], ['Досмотрели до конца', '#2ea56f']
+];
+const DROP_CLICK = [['Не дошли до лендинга', '#d9534f'], ['Дошли, не купили', '#f2b94c'], ['Купили', '#2ea56f']];
+
+function dropAggregate(items) {
+  const t = { impressions: 0, plays: 0, views3s: 0, p25: 0, p50: 0, p75: 0, p100: 0, linkClicks: 0, landingViews: 0, purchases: 0 };
+  for (const c of items) for (const k of Object.keys(t)) t[k] += c[k] || 0;
+  return t;
+}
+
+function dropVideoParts(t) {
+  const pl = t.plays || 1;
+  const parts = [(t.plays - t.p25) / pl, (t.p25 - t.p50) / pl, (t.p50 - t.p75) / pl, (t.p75 - t.p100) / pl, t.p100 / pl];
+  return parts.map((v) => Math.max(0, v) * 100);
+}
+function dropClickParts(t) {
+  const cl = t.linkClicks || 1;
+  return [(t.linkClicks - t.landingViews) / cl, (t.landingViews - t.purchases) / cl, t.purchases / cl].map((v) => Math.max(0, v) * 100);
+}
+
+function dropStepRow(label, value, base, prev, color) {
+  const pctOfBase = base > 0 ? value / base : 0;
+  const lost = prev > 0 ? 1 - value / prev : null;
+  return `<div class="drop-row"><span class="drop-row__label">${label}</span>
+    <span class="drop-row__track"><span class="drop-row__fill" style="width:${Math.max(0.6, Math.min(100, pctOfBase * 100))}%;background:${color}"></span></span>
+    <span class="drop-row__val">${srPct(pctOfBase, pctOfBase < 0.1 ? 2 : 1)} <small>(${Math.round(value).toLocaleString('ru-RU')})</small></span>
+    <span class="drop-row__lost">${lost !== null && lost > 0 ? '−' + srPct(lost, 1) : ''}</span></div>`;
+}
+
+function renderDropSummary(t) {
+  const group = (title, steps, color) => `<div class="drop-group"><div class="drop-group__title">${title}</div>
+    ${steps.map(([label, v], i) => dropStepRow(label, v, steps[0][1], i ? steps[i - 1][1] : 0, color)).join('')}</div>`;
+  $('#drop-summary').innerHTML =
+    group('До клика (показы = 100%)', [['Показы', t.impressions], ['Plays', t.plays], ['3-сек. просмотры', t.views3s], ['Клики по ссылке', t.linkClicks]], '#4285f4') +
+    group('Просмотр видео (Plays = 100%)', [['Plays', t.plays], ['25%', t.p25], ['50%', t.p50], ['75%', t.p75], ['100%', t.p100]], '#2ea56f') +
+    group('После клика (клики = 100%)', [['Клики', t.linkClicks], ['Просмотр лендинга', t.landingViews], ['Покупки', t.purchases]], '#d95f2b');
+}
+
+function dropShortName(name) {
+  const p = String(name || '').split('_');
+  return '№' + p[0] + (p[2] ? ' ' + p[2] : '');
+}
+
+function renderDropCharts(groups) {
+  const labels = groups.map((g) => g.label);
+  const make = (canvasId, key, defs, partsFn) => {
+    destroyChart(key);
+    const rows = groups.map((g) => partsFn(g.t));
+    charts[key] = new Chart($(canvasId), {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: defs.map(([name, color], i) => ({ label: name, data: rows.map((r) => r[i]), backgroundColor: color }))
+      },
+      options: {
+        indexAxis: 'y',
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { position: 'top' },
+          tooltip: { callbacks: { label: (ctx) => ` ${ctx.dataset.label}: ${ctx.parsed.x.toFixed(1)}%` } }
+        },
+        scales: {
+          x: { stacked: true, max: 100, ticks: { callback: (v) => v + '%' } },
+          y: { stacked: true }
+        }
+      }
+    });
+    $(canvasId).parentElement.style.height = Math.max(180, labels.length * 30 + 90) + 'px';
+  };
+  make('#chart-drop-video', 'dropVideo', DROP_VIDEO, dropVideoParts);
+  make('#chart-drop-click', 'dropClick', DROP_CLICK, dropClickParts);
+}
+
+function renderDropoff() {
+  const list = retFiltered;
+  if (!list.length) {
+    $('#drop-summary').innerHTML = '<p class="hint">Нет видео-креативов под эти фильтры</p>';
+    destroyChart('dropVideo'); destroyChart('dropClick');
+    return;
+  }
+  const total = dropAggregate(list);
+  renderDropSummary(total);
+
+  let groups;
+  if ($('#drop-group').value === 'funnels') {
+    const names = [...new Set(list.map((c) => c.funnel))];
+    groups = names.map((n) => ({ label: n, t: dropAggregate(list.filter((c) => c.funnel === n)), spend: list.filter((c) => c.funnel === n).reduce((a, c) => a + c.spend, 0) }))
+      .sort((a, b) => b.spend - a.spend);
+  } else {
+    const n = +$('#drop-top').value;
+    groups = list.slice().sort((a, b) => b.spend - a.spend).slice(0, n).map((c) => ({ label: dropShortName(c.name), t: dropAggregate([c]) }));
+  }
+  groups.unshift({ label: 'Все', t: total });
+  renderDropCharts(groups);
+}
+
+$('#ret-subtabs').addEventListener('click', (e) => {
+  const btn = e.target.closest('.tab');
+  if (!btn) return;
+  retSubtab = btn.dataset.subtab;
+  $all('#ret-subtabs .tab').forEach((b) => b.classList.toggle('is-active', b === btn));
+  $all('#view-ret .tab-panel').forEach((p) => p.classList.toggle('is-active', p.id === `subtab-${retSubtab}`));
+  if (retSubtab === 'ret-drop') renderDropoff();
+});
+$('#drop-group').addEventListener('change', () => {
+  $('#drop-top').disabled = $('#drop-group').value === 'funnels';
+  renderDropoff();
+});
+$('#drop-top').addEventListener('change', renderDropoff);
 
 $('#ret-sort').addEventListener('change', () => {
   retSort = { key: $('#ret-sort').value, dir: 'desc' };

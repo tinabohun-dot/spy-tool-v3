@@ -332,23 +332,12 @@
       </form>
       <div id="ret-status" class="status-line"></div>
 
-      <div id="ret-funnel" class="panel-card ret-funnel"></div>
+      <div class="tabs" id="ret-subtabs">
+        <button type="button" class="tab is-active" data-subtab="ret-top">Топ по удержанию</button>
+        <button type="button" class="tab" data-subtab="ret-drop">Доходимость</button>
+      </div>
 
       <div class="analytics-table-toolbar ret-toolbar">
-        <label class="ret-field">Сортировать по
-          <select id="ret-sort" class="select">
-            <option value="" disabled hidden>По колонке (клик по заголовку)</option>
-            <option value="p50r">Удержание 50%</option>
-            <option value="p25r">Удержание 25%</option>
-            <option value="p75r">Удержание 75%</option>
-            <option value="p100r">Досмотры 100%</option>
-            <option value="hook">Hook Rate</option>
-            <option value="avgWatch">Среднее время просмотра</option>
-            <option value="lpvRate">Переход в воронку (LPV / клики)</option>
-            <option value="buyRate">Покупки / LPV</option>
-            <option value="purchases">Покупки</option>
-          </select>
-        </label>
         <label class="ret-field">Мин. показов
           <input type="number" id="ret-min-impr" class="select" value="1000" min="0" step="500" />
         </label>
@@ -363,20 +352,73 @@
           <select id="ret-funnel-filter" class="select"><option value="">Все воронки</option></select>
         </label>
       </div>
-      <div class="table-scroll">
-        <table class="table analytics-table ret-table" id="ret-table">
-          <thead><tr>
-            <th>#</th><th>Превью</th><th data-sort="name">Название</th><th data-sort="grade">Grade</th><th data-sort="funnel">Funnel</th>
-            <th data-sort="spend">Spend</th><th data-sort="impressions">Показы</th>
-            <th data-sort="hook">Hook Rate</th><th data-sort="plays">Plays</th><th data-sort="p25r">25%</th><th data-sort="p50r">50%</th>
-            <th data-sort="p75r">75%</th><th data-sort="p100r">100%</th><th data-sort="avgWatch">Avg watch</th>
-            <th class="ret-sep" data-sort="linkClicks">Клики</th><th data-sort="ctr">CTR</th><th data-sort="landingViews">LPV</th>
-            <th data-sort="lpvRate">LPV / клики</th><th data-sort="purchases">Покупки</th><th data-sort="buyRate">Покупки / LPV</th><th data-sort="cpa">CPA</th>
-          </tr></thead>
-          <tbody id="ret-tbody"></tbody>
-        </table>
+
+      <div id="subtab-ret-top" class="tab-panel is-active">
+        <div id="ret-funnel" class="panel-card ret-funnel"></div>
+        <div class="analytics-table-toolbar ret-toolbar">
+          <label class="ret-field">Сортировать по
+            <select id="ret-sort" class="select">
+              <option value="" disabled hidden>По колонке (клик по заголовку)</option>
+              <option value="p50r">Удержание 50%</option>
+              <option value="p25r">Удержание 25%</option>
+              <option value="p75r">Удержание 75%</option>
+              <option value="p100r">Досмотры 100%</option>
+              <option value="hook">Hook Rate</option>
+              <option value="avgWatch">Среднее время просмотра</option>
+              <option value="lpvRate">Переход в воронку (LPV / клики)</option>
+              <option value="buyRate">Покупки / LPV</option>
+              <option value="purchases">Покупки</option>
+            </select>
+          </label>
+        </div>
+        <div class="table-scroll">
+          <table class="table analytics-table ret-table" id="ret-table">
+            <thead><tr>
+              <th>#</th><th>Превью</th><th data-sort="name">Название</th><th data-sort="grade">Grade</th><th data-sort="funnel">Funnel</th>
+              <th data-sort="spend">Spend</th><th data-sort="impressions">Показы</th>
+              <th data-sort="hook">Hook Rate</th><th data-sort="plays">Plays</th><th data-sort="p25r">25%</th><th data-sort="p50r">50%</th>
+              <th data-sort="p75r">75%</th><th data-sort="p100r">100%</th><th data-sort="avgWatch">Avg watch</th>
+              <th class="ret-sep" data-sort="linkClicks">Клики</th><th data-sort="ctr">CTR</th><th data-sort="landingViews">LPV</th>
+              <th data-sort="lpvRate">LPV / клики</th><th data-sort="purchases">Покупки</th><th data-sort="buyRate">Покупки / LPV</th><th data-sort="cpa">CPA</th>
+            </tr></thead>
+            <tbody id="ret-tbody"></tbody>
+          </table>
+        </div>
+        <p class="hint ret-note">Hook Rate = 3-сек. просмотры / показы. 25/50/75/100% — доля запусков видео (Plays), доживших до этой отметки. LPV — просмотры лендинга (реально пришли на воронку). Креативы с малым числом показов шумят, поэтому есть фильтр «Мин. показов».</p>
       </div>
-      <p class="hint ret-note">Hook Rate = 3-сек. просмотры / показы. 25/50/75/100% — доля запусков видео (Plays), доживших до этой отметки. LPV — просмотры лендинга (реально пришли на воронку). Креативы с малым числом показов шумят, поэтому есть фильтр «Мин. показов».</p>
+
+      <div id="subtab-ret-drop" class="tab-panel">
+        <div class="analytics-table-toolbar ret-toolbar">
+          <label class="ret-field">Группировка
+            <select id="drop-group" class="select">
+              <option value="creatives">По креативам (топ по spend)</option>
+              <option value="funnels">По воронкам</option>
+            </select>
+          </label>
+          <label class="ret-field">Сколько креативов
+            <select id="drop-top" class="select">
+              <option value="10">10</option>
+              <option value="15" selected>15</option>
+              <option value="25">25</option>
+            </select>
+          </label>
+        </div>
+        <div class="panel-card">
+          <h4>Воронка отсева</h4>
+          <p class="hint">Каждый блок — 100% на своём первом шаге. Красная пометка показывает, сколько зрителей потерялось на шаге.</p>
+          <div id="drop-summary"></div>
+        </div>
+        <div class="panel-card">
+          <h4>Где отваливаются на видео</h4>
+          <p class="hint">Доля запусков видео (Plays), ушедших до отметки 25/50/75/100%. Чем больше зелёного справа, тем лучше креатив удерживает.</p>
+          <div class="drop-chart-wrap"><canvas id="chart-drop-video"></canvas></div>
+        </div>
+        <div class="panel-card">
+          <h4>От клика до покупки</h4>
+          <p class="hint">Что случилось с людьми, кликнувшими по ссылке: не дождались лендинга, дошли но не купили, купили.</p>
+          <div class="drop-chart-wrap"><canvas id="chart-drop-click"></canvas></div>
+        </div>
+      </div>
     </section>
 
     <section id="view-analytics" class="view" hidden>

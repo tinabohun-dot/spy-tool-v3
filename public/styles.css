@@ -469,3 +469,15 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
 .analytics-table th.is-sorted-asc::after { content: ' \25B4'; }
 .ret-table th[data-sort] { cursor: pointer; user-select: none; }
 .ret-table th[data-sort]:hover { color: var(--ink); }
+
+#subtab-ret-drop .panel-card { margin-bottom: 14px; }
+.drop-chart-wrap { position: relative; width: 100%; }
+.drop-chart-wrap canvas { max-height: none !important; }
+.drop-group { margin-bottom: 14px; }
+.drop-group__title { font-weight: 700; font-size: 13px; margin-bottom: 6px; color: #2b3a67; }
+.drop-row { display: grid; grid-template-columns: 150px 1fr 150px 90px; gap: 10px; align-items: center; padding: 3px 0; font-size: 13px; }
+.drop-row__track { background: #eef0f2; border-radius: 6px; height: 16px; overflow: hidden; }
+.drop-row__fill { display: block; height: 100%; border-radius: 6px; }
+.drop-row__val small { color: var(--muted, #777); }
+.drop-row__lost { color: #d9534f; font-weight: 600; font-size: 12px; text-align: right; }
+@media (max-width: 800px) { .drop-row { grid-template-columns: 110px 1fr 110px 60px; } }
