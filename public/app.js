@@ -1732,10 +1732,14 @@ function renderRetention() {
   if (!retData) return;
   const minImpr = +$('#ret-min-impr').value || 0;
   const funnel = $('#ret-funnel-filter').value;
+  // Поиск по названию: все слова должны встретиться; при поиске порог по показам не применяем,
+  // чтобы нужный креатив нашёлся, даже если у него мало показов.
+  const words = $('#ret-search').value.toLowerCase().split(/[\s,]+/).filter(Boolean);
   const { key, dir } = retSort;
   const mult = dir === 'asc' ? 1 : -1;
   const list = retData.creatives.map(retDerive)
-    .filter((c) => c.impressions >= minImpr && (!funnel || c.funnel === funnel))
+    .filter((c) => (words.length || c.impressions >= minImpr) && (!funnel || c.funnel === funnel)
+      && words.every((w) => c.name.toLowerCase().includes(w)))
     .sort((a, b) => {
       const x = a[key], y = b[key];
       // Пустые значения (например, CPA без покупок) всегда в конце списка.
@@ -1792,7 +1796,8 @@ function renderRetention() {
   const t = retData.totals || { all: retData.creatives.length, video: retData.creatives.length, nonVideo: 0 };
   const hiddenByFilter = retData.creatives.length - list.length;
   $('#ret-scope').textContent = `Показано ${list.length} из ${t.video} видео-креативов за период. ` +
-    (hiddenByFilter > 0 ? `Скрыто ${hiddenByFilter}: меньше ${minImpr} показов${funnel ? ' или другая воронка' : ''} (фильтр «Мин. показов» — поставь 0, чтобы увидеть все). ` : '') +
+    (words.length ? `Поиск «${$('#ret-search').value.trim()}»: порог «Мин. показов» не применяется. ` : '') +
+    (!words.length && hiddenByFilter > 0 ? `Скрыто ${hiddenByFilter}: меньше ${minImpr} показов${funnel ? ' или другая воронка' : ''} (фильтр «Мин. показов» — поставь 0, чтобы увидеть все). ` : '') +
     (retData.curveNote?.failed ? `⚠ Meta не отдала удержание по секундам (3/5/10/15 сек), попробуй обновить через минуту: ${retData.curveNote.error}. ` : '') +
     (retData.curveNote?.allCountries ? 'Удержание по секундам (3/5/10/15 сек) Meta считает только по всем странам сразу, поэтому эти колонки не учитывают фильтр по странам. ' : '') +
     (t.nonVideo > 0 ? `Ещё ${t.nonVideo} креативов (статика, лонгриды) здесь не показываются — у них нет метрик просмотра видео; они есть в «Аналитика → Все креативы».` : '');
@@ -2080,6 +2085,7 @@ $('#ret-table').addEventListener('click', (e) => {
   renderRetention();
 });
 $('#ret-min-impr').addEventListener('input', renderRetention);
+$('#ret-search').addEventListener('input', renderRetention);
 $('#ret-funnel-filter').addEventListener('change', renderRetention);
 $('#ret-campaign').addEventListener('change', loadRetention);
 const retCountryFilter = setupCountryFilter({
