@@ -186,6 +186,49 @@ async function fetchAllAccountsInsightsBreakdown(since, until, breakdowns) {
   return perAccount.flat();
 }
 
+// Кривая удержания видео по секундам (video_play_curve_actions — та же, что
+// на графике удержания в Ads Manager) + просмотры 15 сек. Отдельный запрос,
+// чтобы возможная ошибка этого поля не ломала основные отчёты. Возвращает
+// строки на объявление (при breakdown=country — на объявление x страну).
+async function fetchVideoCurveRows(accountId, since, until, breakdowns) {
+  const url = new URL(`https://graph.facebook.com/${API_VERSION}/${accountId}/insights`);
+  url.searchParams.set('fields', 'ad_id,video_play_actions,video_play_curve_actions,video_15_sec_watched_actions');
+  url.searchParams.set('time_range', JSON.stringify({ since, until }));
+  url.searchParams.set('level', 'ad');
+  if (breakdowns?.length) url.searchParams.set('breakdowns', breakdowns.join(','));
+  url.searchParams.set('limit', '500');
+  url.searchParams.set('access_token', token());
+  return paginate(url.toString());
+}
+
+// ad_id -> { plays, curve: [% на каждом шаге], thru15 } (с учётом фильтра стран).
+async function fetchVideoCurves(since, until, countries, countryMode) {
+  const byCountry = countries && countries.length ? ['country'] : [];
+  const perAccount = await Promise.all(
+    Object.values(accounts()).map((accId) => fetchVideoCurveRows(accId, since, until, byCountry))
+  );
+  let rows = perAccount.flat();
+  if (byCountry.length) rows = filterRowsByCountries(rows, countries, countryMode);
+  const out = {};
+  for (const r of rows) {
+    const plays = getVideoMetric(r.video_play_actions);
+    const raw = (r.video_play_curve_actions || [])[0]?.value;
+    const curve = Array.isArray(raw) ? raw.map(Number) : null;
+    const t = (out[r.ad_id] ||= { plays: 0, curveSum: null, thru15: 0 });
+    t.plays += plays;
+    t.thru15 += getVideoMetric(r.video_15_sec_watched_actions);
+    if (curve) {
+      t.curveSum ||= new Array(curve.length).fill(0);
+      curve.forEach((v, i) => { t.curveSum[i] += (v || 0) * plays; });
+    }
+  }
+  for (const t of Object.values(out)) {
+    t.curve = t.curveSum && t.plays > 0 ? t.curveSum.map((v) => v / t.plays) : null;
+    delete t.curveSum;
+  }
+  return out;
+}
+
 // Страны, по которым есть трата за период (для списка в фильтре), от
 // большей траты к меньшей. Берём разбивку на уровне аккаунта — это дёшево.
 async function fetchCountrySpend(since, until) {
@@ -596,7 +639,7 @@ async function attachPreviews(creatives) {
 
 module.exports = {
   accounts, fetchAllAccountsInsights, fetchAccountInsights,
-  fetchAllAccountsInsightsBreakdown, fetchCountrySpend, filterRowsByCountries, collapseCountryRows,
+  fetchAllAccountsInsightsBreakdown, fetchVideoCurves, fetchCountrySpend, filterRowsByCountries, collapseCountryRows,
   groupRowsByCreative, buildCreativeEntry, summarize, attachPreviews, filterRowsByCampaignMode,
   fetchLaunchedTaskNumbers, fetchPlatformBreakdown, fetchDemographics,
   fetchAdPreview,

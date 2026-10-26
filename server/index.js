@@ -294,19 +294,37 @@ app.get('/api/analytics/retention', async (req, res) => {
   try {
     const { since, until } = req.query;
     if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until' });
-    const rows = metaMarketing.filterRowsByCampaignMode(
-      await metaMarketing.fetchAllAccountsInsights(since, until), req.query.campaignMode
-    );
+    const countries = String(req.query.countries || '').split(',').map((c) => c.trim().toUpperCase()).filter(Boolean);
+    const rawRows = countries.length
+      ? metaMarketing.collapseCountryRows(metaMarketing.filterRowsByCountries(
+          await metaMarketing.fetchAllAccountsInsightsBreakdown(since, until, ['country']), countries, req.query.countryMode
+        ))
+      : await metaMarketing.fetchAllAccountsInsights(since, until);
+    const rows = metaMarketing.filterRowsByCampaignMode(rawRows, req.query.campaignMode);
     const creatives = metaMarketing.groupRowsByCreative(rows).map(metaMarketing.buildCreativeEntry)
       .filter((c) => c.type === 'Video' && c.impressions >= 500 && c.videoPlays > 0);
     await metaMarketing.attachPreviews(creatives);
+
+    // Кривая удержания по секундам — по возможности; если Meta не отдала, просто без неё.
+    let curves = {};
+    try { curves = await metaMarketing.fetchVideoCurves(since, until, countries, req.query.countryMode); }
+    catch (err) { console.warn('[retention] кривая удержания недоступна:', err.message); }
+    const curveFor = (c) => {
+      const ids = (c.adIds || [c.adId]).map((id) => curves[id]).filter((x) => x && x.curve);
+      if (!ids.length) return { curve: null, thru15: 0 };
+      const plays = ids.reduce((a, x) => a + x.plays, 0);
+      const len = Math.max(...ids.map((x) => x.curve.length));
+      const curve = Array.from({ length: len }, (_, i) => ids.reduce((a, x) => a + (x.curve[i] || 0) * x.plays, 0) / (plays || 1));
+      return { curve, thru15: ids.reduce((a, x) => a + x.thru15, 0) };
+    };
     res.json({
       since, until,
       creatives: creatives.map((c) => ({
         name: c.name, funnel: c.primaryFunnel || 'Другое', grade: c.grade, previewUrl: c.previewUrl,
         spend: c.spend, impressions: c.impressions, views3s: c.videoViews3s || 0, plays: c.videoPlays,
         p25: c.videoP25, p50: c.videoP50, p75: c.videoP75, p100: c.videoP100, avgWatch: c.avgWatchTime,
-        linkClicks: c.linkClicks, landingViews: c.landingViews, purchases: c.purchases, cpa: c.cpa
+        linkClicks: c.linkClicks, landingViews: c.landingViews, purchases: c.purchases, cpa: c.cpa,
+        ...curveFor(c)
       }))
     });
   } catch (err) {
