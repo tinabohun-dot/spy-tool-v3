@@ -433,3 +433,5 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
 .country-row span:nth-of-type(1) { flex: 1; }
 .country-row__spend { color: var(--muted, #777); font-size: 12px; }
 .country-popover__foot { display: flex; justify-content: space-between; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+
+.fmt-tag--longread { background: #dbe7fc; color: #1d4fa8; }

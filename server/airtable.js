@@ -83,7 +83,7 @@ async function loadTasks() {
       recordId: r.id,
       taskId: f['Task ID'] ?? null,
       taskName: f['Task Name'] || '',
-      creoType: f['Creo Type'] === 'V' ? 'Video' : f['Creo Type'] === 'S' ? 'Static' : (f['Creo Type'] || null),
+      creoType: f['Creo Type'] === 'V' ? 'Video' : f['Creo Type'] === 'S' ? 'Static' : f['Creo Type'] === 'L' ? 'Longread' : (f['Creo Type'] || null),
       cp: f['CP'] || null,
       designer: f['Designer'] || null,
       funnel: (f['Funnel'] || [])[0] || null,
@@ -137,13 +137,13 @@ async function productionReport(since, until, launchedTaskNumbers) {
   const byDesignerFormat = {};
   const byDayDesignerFormat = {};
   const byFunnel = {};
-  let video = 0; let staticCount = 0; let launched = 0;
+  let video = 0; let staticCount = 0; let longread = 0; let launched = 0;
 
   for (const t of inWindow) {
     const day = t.whenToTest.slice(0, 10);
     byDay[day] = (byDay[day] || 0) + 1;
 
-    if (t.creoType === 'Video') video++; else if (t.creoType === 'Static') staticCount++;
+    if (t.creoType === 'Video') video++; else if (t.creoType === 'Static') staticCount++; else if (t.creoType === 'Longread') longread++;
 
     const d = t.designer || '—';
     byDesigner[d] = (byDesigner[d] || 0) + 1;
@@ -154,10 +154,10 @@ async function productionReport(since, until, launchedTaskNumbers) {
     (byDesignerTasksByDay[d] ||= {});
     pushTask(byDesignerTasksByDay[d], day, t);
 
-    const fmt = t.creoType === 'Video' ? 'Video' : t.creoType === 'Static' ? 'Static' : 'Other';
-    (byDesignerFormat[d] ||= { Video: 0, Static: 0, Other: 0 })[fmt]++;
+    const fmt = t.creoType === 'Video' ? 'Video' : t.creoType === 'Static' ? 'Static' : t.creoType === 'Longread' ? 'Longread' : 'Other';
+    (byDesignerFormat[d] ||= { Video: 0, Static: 0, Longread: 0, Other: 0 })[fmt]++;
     (byDayDesignerFormat[day] ||= {});
-    (byDayDesignerFormat[day][d] ||= { Video: 0, Static: 0, Other: 0 })[fmt]++;
+    (byDayDesignerFormat[day][d] ||= { Video: 0, Static: 0, Longread: 0, Other: 0 })[fmt]++;
 
     const funnel = t.funnel || '—';
     byFunnel[funnel] = (byFunnel[funnel] || 0) + 1;
@@ -175,6 +175,7 @@ async function productionReport(since, until, launchedTaskNumbers) {
     pctChange,
     video,
     static: staticCount,
+    longread,
     launched,
     notLaunched: inWindow.length - launched,
     byDay: Object.entries(byDay).map(([day, count]) => ({ day, count })).sort((a, b) => a.day.localeCompare(b.day)),
@@ -199,12 +200,12 @@ async function cpReport(since, until) {
   const byCp = {};
   const byDayCp = {};
   const byCpTasksByDay = {};
-  let video = 0; let staticCount = 0;
+  let video = 0; let staticCount = 0; let longread = 0;
 
   for (const t of inWindow) {
     const day = t.whenToDo.slice(0, 10);
     byDay[day] = (byDay[day] || 0) + 1;
-    if (t.creoType === 'Video') video++; else if (t.creoType === 'Static') staticCount++;
+    if (t.creoType === 'Video') video++; else if (t.creoType === 'Static') staticCount++; else if (t.creoType === 'Longread') longread++;
     const cp = t.cp || '—';
     byCp[cp] = (byCp[cp] || 0) + 1;
 
@@ -224,6 +225,7 @@ async function cpReport(since, until) {
     pctChange,
     video,
     static: staticCount,
+    longread,
     byDay: Object.entries(byDay).map(([day, count]) => ({ day, count })).sort((a, b) => a.day.localeCompare(b.day)),
     byCp: Object.fromEntries(Object.entries(byCp).sort((a, b) => b[1] - a[1])),
     byDayCp,
@@ -244,8 +246,8 @@ async function uaReport(since, until) {
   const byDayFunnel = {};
   const byDayFunnelTasks = {};
   const byFunnelTasksByDay = {};
-  const formatTasks = { Video: [], Static: [] };
-  let video = 0; let staticCount = 0;
+  const formatTasks = { Video: [], Static: [], Longread: [] };
+  let video = 0; let staticCount = 0; let longread = 0;
 
   for (const t of inWindow) {
     const day = t.whenSentUA.slice(0, 10);
@@ -254,6 +256,7 @@ async function uaReport(since, until) {
 
     if (t.creoType === 'Video') { video++; formatTasks.Video.push({ taskId: t.taskId, taskName: t.taskName }); }
     else if (t.creoType === 'Static') { staticCount++; formatTasks.Static.push({ taskId: t.taskId, taskName: t.taskName }); }
+    else if (t.creoType === 'Longread') { longread++; formatTasks.Longread.push({ taskId: t.taskId, taskName: t.taskName }); }
 
     byFunnel[funnel] = (byFunnel[funnel] || 0) + 1;
 
@@ -286,6 +289,7 @@ async function uaReport(since, until) {
     pctChange,
     video,
     static: staticCount,
+    longread,
     byDay: Object.entries(byDay).map(([day, count]) => ({ day, count })).sort((a, b) => a.day.localeCompare(b.day)),
     byDayFunnel,
     byDayFunnelTasks,

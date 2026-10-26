@@ -317,7 +317,7 @@ app.get('/api/analytics/formats', async (req, res) => {
     const allRows = await metaMarketing.fetchAllAccountsInsights(since, until);
     const creatives = metaMarketing.groupRowsByCreative(allRows).map(metaMarketing.buildCreativeEntry);
 
-    const format = { Video: 0, Static: 0 };
+    const format = { Video: 0, Static: 0, Longread: 0 };
     const funnel = {};
     for (const c of creatives) {
       format[c.type] = (format[c.type] || 0) + 1;

@@ -454,14 +454,18 @@ function buildCreativeEntry(row) {
   const frequency = reach > 0 ? impressions / reach : 0;
 
   const videoPlays = getVideoMetric(row.video_play_actions);
-  const isVideo = /_v_/i.test(row.ad_name || '') || (!/_s_/i.test(row.ad_name || '') && videoPlays > 0);
+  // Тип крео зашит вторым сегментом названия: 123_V_..., 123_S_..., 123_L_...
+  // (L — лонгрид, отдельный тип). Для старых названий без этого сегмента —
+  // прежняя эвристика по _v_/_s_ и наличию видео-просмотров.
+  const isLongread = /^l$/i.test(String(row.ad_name || '').split('_')[1] || '');
+  const isVideo = !isLongread && (/_v_/i.test(row.ad_name || '') || (!/_s_/i.test(row.ad_name || '') && videoPlays > 0));
   const hookRate = isVideo && impressions > 0 ? videoViews3s / impressions : null;
 
   return {
     adId: row.ad_id,
     adIds: row._adIds || [row.ad_id],
     name: row.ad_name,
-    type: isVideo ? 'Video' : 'Static',
+    type: isLongread ? 'Longread' : isVideo ? 'Video' : 'Static',
     mergedCount: row._mergedCount || 1,
     accounts: row._accountNames || (row._accountName ? [row._accountName] : []),
     campaignName: row.campaign_name || '',

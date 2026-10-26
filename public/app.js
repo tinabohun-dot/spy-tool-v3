@@ -439,15 +439,18 @@ document.addEventListener('click', (e) => {
 function formatTag(creoType) {
   if (creoType === 'Video') return '<span class="fmt-tag fmt-tag--video">V</span> ';
   if (creoType === 'Static') return '<span class="fmt-tag fmt-tag--static">S</span> ';
+  if (creoType === 'Longread') return '<span class="fmt-tag fmt-tag--longread">L</span> ';
   return '';
 }
 
 function formatSummary(tasks) {
   const v = tasks.filter((t) => t.creoType === 'Video').length;
   const st = tasks.filter((t) => t.creoType === 'Static').length;
+  const l = tasks.filter((t) => t.creoType === 'Longread').length;
   const parts = [];
   if (v) parts.push(`${v} видео`);
   if (st) parts.push(`${st} статика`);
+  if (l) parts.push(`${l} лонгрид`);
   return parts.length ? `(${parts.join(' · ')})` : '';
 }
 
@@ -481,11 +484,13 @@ function renderFunnelBarWithDayGroups(sel, byFunnel, tasksByDayPerFunnel) {
 function renderFormatWithTasks(barSel, legendSel, tasksSel, formatTasks) {
   const video = formatTasks.Video || [];
   const staticTasks = formatTasks.Static || [];
+  const longreadTasks = formatTasks.Longread || [];
   renderGenericStackedBar(barSel, legendSel, [
     { label: 'Video', value: video.length, color: '#2ea56f' },
-    { label: 'Static', value: staticTasks.length, color: '#d95f2b' }
+    { label: 'Static', value: staticTasks.length, color: '#d95f2b' },
+    { label: 'Longread', value: longreadTasks.length, color: '#4285f4' }
   ]);
-  const byLabel = { Video: video, Static: staticTasks };
+  const byLabel = { Video: video, Static: staticTasks, Longread: longreadTasks };
   const taskListEl = $(tasksSel);
   taskListEl.hidden = true;
   $all('span', $(legendSel)).forEach((span) => {
@@ -1289,7 +1294,8 @@ async function loadFormats(since, until) {
 
     renderGenericStackedBar('#formats-format-bar', '#formats-format-legend', [
       { label: 'Video', value: data.format.Video || 0, color: '#2ea56f' },
-      { label: 'Static', value: data.format.Static || 0, color: '#d95f2b' }
+      { label: 'Static', value: data.format.Static || 0, color: '#d95f2b' },
+      { label: 'Longread', value: data.format.Longread || 0, color: '#4285f4' }
     ]);
     renderBarList('#formats-platform-bars', data.platform);
     renderBarList('#formats-funnel-bars', data.funnel);
@@ -1488,14 +1494,15 @@ function renderDesignerFormatTable(sel, data, days, designers) {
     const parts = [];
     if (f.Video) parts.push(`<span class="fmt-tag fmt-tag--video">${f.Video}V</span>`);
     if (f.Static) parts.push(`<span class="fmt-tag fmt-tag--static">${f.Static}S</span>`);
+    if (f.Longread) parts.push(`<span class="fmt-tag fmt-tag--longread">${f.Longread}L</span>`);
     if (f.Other) parts.push(`<span class="fmt-tag">${f.Other}?</span>`);
     return parts.join(' ');
   };
-  const head = `<tr><th>Дизайнер</th>${days.map((d) => `<th>${d.slice(5)}</th>`).join('')}<th>Итого</th><th>Видео / статика</th></tr>`;
+  const head = `<tr><th>Дизайнер</th>${days.map((d) => `<th>${d.slice(5)}</th>`).join('')}<th>Итого</th><th>Видео / статика / лонгрид</th></tr>`;
   const rows = designers.map((d) => {
     const tot = data.byDesignerFormat[d];
-    const sum = (tot.Video + tot.Static + tot.Other) || 1;
-    const bar = `<span class="stacked-bar stacked-bar--mini"><span class="stacked-bar__seg" style="width:${tot.Video / sum * 100}%;background:#2ea56f"></span><span class="stacked-bar__seg" style="width:${tot.Static / sum * 100}%;background:#d95f2b"></span></span>`;
+    const sum = (tot.Video + tot.Static + (tot.Longread || 0) + tot.Other) || 1;
+    const bar = `<span class="stacked-bar stacked-bar--mini"><span class="stacked-bar__seg" style="width:${tot.Video / sum * 100}%;background:#2ea56f"></span><span class="stacked-bar__seg" style="width:${tot.Static / sum * 100}%;background:#d95f2b"></span><span class="stacked-bar__seg" style="width:${(tot.Longread || 0) / sum * 100}%;background:#4285f4"></span></span>`;
     return `<tr><td><strong>${d}</strong></td>${days.map((day) => `<td>${cell(data.byDayDesignerFormat[day]?.[d])}</td>`).join('')}<td>${cell(tot)}</td><td>${bar}</td></tr>`;
   }).join('');
   $(sel).innerHTML = `<div class="fmt-table-wrap"><table class="fmt-table"><thead>${head}</thead><tbody>${rows}</tbody></table></div>`;
@@ -1532,7 +1539,8 @@ function renderDailyReport(prefix, data) {
 
   renderGenericStackedBar(`#${prefix}-format-bar`, `#${prefix}-format-legend`, [
     { label: 'Video', value: data.video, color: '#2ea56f' },
-    { label: 'Static', value: data.static, color: '#d95f2b' }
+    { label: 'Static', value: data.static, color: '#d95f2b' },
+    { label: 'Longread', value: data.longread || 0, color: '#4285f4' }
   ]);
 
   renderFunnelBarWithDayGroups(`#${prefix}-bars`, data.byCp, data.byCpTasksByDay);
