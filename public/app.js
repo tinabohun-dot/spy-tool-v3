@@ -1800,8 +1800,20 @@ const DROP_CLICK = [['Не дошли до лендинга', '#d9534f'], ['До
 function dropAggregate(items) {
   const t = { impressions: 0, plays: 0, views3s: 0, p25: 0, p50: 0, p75: 0, p100: 0, linkClicks: 0, landingViews: 0, purchases: 0 };
   for (const c of items) for (const k of Object.keys(t)) t[k] += c[k] || 0;
+  // Удержание по секундам (из кривой Meta), средневзвешенное по Plays.
+  const withCurve = items.filter((c) => c.curve);
+  const w = withCurve.reduce((a, c) => a + c.plays, 0);
+  t.sec = w > 0 ? [3, 5, 10, 15].map((s) => withCurve.reduce((a, c) => a + (c.curve[s] || 0) * c.plays, 0) / w) : null;
   return t;
 }
+function dropSecParts(t) {
+  if (!t.sec) return [0, 0, 0, 0, 0];
+  const [a, b, c, d] = t.sec;
+  return [100 - a, a - b, b - c, c - d, d].map((v) => Math.max(0, v));
+}
+const DROP_SEC = [
+  ['Ушли до 3 сек', '#d9534f'], ['3 → 5 сек', '#e8793a'], ['5 → 10 сек', '#f2b94c'], ['10 → 15 сек', '#9cc66a'], ['Остались после 15 сек', '#2ea56f']
+];
 
 function dropVideoParts(t) {
   const pl = t.plays || 1;
@@ -1862,7 +1874,12 @@ function renderDropCharts(groups) {
     });
     $(canvasId).parentElement.style.height = Math.max(180, labels.length * 30 + 90) + 'px';
   };
-  make('#chart-drop-video', 'dropVideo', DROP_VIDEO, dropVideoParts);
+  const bySec = $('#drop-scale').value === 'sec';
+  $('#drop-video-hint').textContent = bySec
+    ? 'Доля запусков видео, ушедших до 3, 5, 10 и 15 секунды (кривая удержания Meta). Зелёный справа — досмотрели дальше 15 секунд.'
+    : 'Доля запусков видео (Plays), ушедших до отметки 25/50/75/100%. Чем больше зелёного справа, тем лучше креатив удерживает.';
+  if (bySec) make('#chart-drop-video', 'dropVideo', DROP_SEC, dropSecParts);
+  else make('#chart-drop-video', 'dropVideo', DROP_VIDEO, dropVideoParts);
   make('#chart-drop-click', 'dropClick', DROP_CLICK, dropClickParts);
 }
 
@@ -1902,6 +1919,7 @@ $('#drop-group').addEventListener('change', () => {
   renderDropoff();
 });
 $('#drop-top').addEventListener('change', renderDropoff);
+$('#drop-scale').addEventListener('change', renderDropoff);
 
 $('#ret-sort').addEventListener('change', () => {
   retSort = { key: $('#ret-sort').value, dir: 'desc' };

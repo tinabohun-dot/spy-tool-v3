@@ -419,6 +419,12 @@
               <option value="funnels">По воронкам</option>
             </select>
           </label>
+          <label class="ret-field">Шкала удержания
+            <select id="drop-scale" class="select">
+              <option value="pct">По % видео (25/50/75/100)</option>
+              <option value="sec">По секундам (3/5/10/15)</option>
+            </select>
+          </label>
           <label class="ret-field">Сколько креативов
             <select id="drop-top" class="select">
               <option value="10">10</option>
@@ -434,7 +440,7 @@
         </div>
         <div class="panel-card">
           <h4>Где отваливаются на видео</h4>
-          <p class="hint">Доля запусков видео (Plays), ушедших до отметки 25/50/75/100%. Чем больше зелёного справа, тем лучше креатив удерживает.</p>
+          <p class="hint" id="drop-video-hint">Доля запусков видео (Plays), ушедших до отметки 25/50/75/100%. Чем больше зелёного справа, тем лучше креатив удерживает.</p>
           <div class="drop-chart-wrap"><canvas id="chart-drop-video"></canvas></div>
         </div>
         <div class="panel-card">
