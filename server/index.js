@@ -297,7 +297,10 @@ app.get('/api/analytics/retention', async (req, res) => {
     const countries = String(req.query.countries || '').split(',').map((c) => c.trim().toUpperCase()).filter(Boolean);
     // Кривая удержания по секундам грузится параллельно с основными данными;
     // если Meta её не отдала — просто без неё.
-    const curvesPromise = metaMarketing.fetchVideoCurves(since, until, countries, req.query.countryMode)
+    const fetchCurves = () => metaMarketing.fetchVideoCurves(since, until, countries, req.query.countryMode);
+    // Meta на больших периодах иногда отвечает "Service temporarily unavailable" — пробуем ещё раз.
+    const curvesPromise = fetchCurves()
+      .catch(() => new Promise((r) => setTimeout(r, 3000)).then(fetchCurves))
       .catch((err) => {
         console.warn('[retention] кривая удержания недоступна:', err.message);
         const empty = {};

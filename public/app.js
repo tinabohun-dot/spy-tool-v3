@@ -2095,16 +2095,22 @@ function vizSteps(t, path) {
     steps.push(['25%', t.p25], ['50%', t.p50], ['75%', t.p75], ['100%', t.p100]);
     return steps;
   }
-  return [['Показы', t.impressions], ['Plays', t.plays], ['3-сек. просмотры', t.views3s], ['Клики', t.linkClicks], ['Просмотр лендинга', t.landingViews], ['Покупки', t.purchases]];
+  // Третий элемент — индекс шага, от которого считается штриховка: клики идут не
+  // "после 100% просмотра", а от 3-сек. просмотров, поэтому сравниваем с ними.
+  return [['Показы', t.impressions], ['Plays', t.plays], ['3-сек. просмотры', t.views3s],
+    ['25%', t.p25], ['50%', t.p50], ['75%', t.p75], ['100%', t.p100],
+    ['Клики', t.linkClicks, 2], ['Просмотр лендинга', t.landingViews], ['Покупки', t.purchases]];
 }
 
 let vizGroups = [];
 
 function vizChartHtml(title, count, steps, idx) {
   const base = steps[0][1] || 1;
-  let prev = 1;
-  const cols = steps.map(([label, v]) => {
+  const pcts = [];
+  const cols = steps.map(([label, v, ref], i) => {
     const pct = Math.max(0, v / base);
+    pcts.push(pct);
+    const prev = i === 0 ? 1 : pcts[ref != null ? ref : i - 1];
     const solid = Math.max(2, pct * VIZ_H);
     const hatch = Math.max(0, (prev - pct) * VIZ_H);
     const html = `<div class="viz__col">
@@ -2114,7 +2120,6 @@ function vizChartHtml(title, count, steps, idx) {
         <div class="viz__bubble" style="bottom:${solid}px"><b>${srPct(pct, pct < 0.1 ? 2 : 1)}</b><span>${Math.round(v).toLocaleString('ru-RU')}</span></div>
       </div>
       <div class="viz__label">${label}</div></div>`;
-    prev = pct;
     return html;
   }).join('');
   return `<div class="panel-card viz-card" data-idx="${idx}"><h4>${srEsc(title)} <span class="hint">— ${count} креат.</span>
