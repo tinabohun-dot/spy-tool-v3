@@ -305,4 +305,39 @@ async function uaReport(since, until) {
   };
 }
 
-module.exports = { loadTasks, inRange, productionReport, cpReport, uaReport };
+
+// Раздел "Production": доска по воронкам. В окно попадают задачи, у которых
+// "When 'To Test'" в периоде (границы включительно: фильтр Airtable "is after
+// 18.10 and is before 24.10" == 19..23). Из них "Send UA" — уже ушедшие в UA
+// (есть дата "Sent UA" или такой статус), остальные — "Ready Test".
+function isSentUA(t) {
+  return !!t.whenSentUA || /^(sent|send)\s*ua$/i.test(String(t.status || '').trim());
+}
+
+async function productionBoard(since, until) {
+  const { tasks } = await loadTasks();
+  const inWindow = tasks.filter((t) => inRange(t.whenToTest, since, until));
+  const fmt = (t) => (t.creoType === 'Video' ? 'V' : t.creoType === 'Static' ? 'S' : t.creoType === 'Longread' ? 'L' : 'O');
+  const item = (t) => ({ taskId: t.taskId, taskName: t.taskName, status: t.status, creoType: t.creoType, designer: t.designer, cp: t.cp });
+  const bucket = () => ({ total: 0, S: [], V: [], L: [], O: [] });
+  const add = (b, t) => { b.total++; b[fmt(t)].push(item(t)); };
+
+  const byFunnel = {};
+  const totals = { all: bucket(), readyTest: bucket(), sentUA: bucket() };
+  const byStatus = {};
+  for (const t of inWindow) {
+    const name = t.funnel || '—';
+    const f = (byFunnel[name] ||= { name, all: bucket(), readyTest: bucket(), sentUA: bucket() });
+    const kind = isSentUA(t) ? 'sentUA' : 'readyTest';
+    add(f.all, t); add(f[kind], t);
+    add(totals.all, t); add(totals[kind], t);
+    byStatus[t.status || '—'] = (byStatus[t.status || '—'] || 0) + 1;
+  }
+  return {
+    since, until,
+    funnels: Object.values(byFunnel).sort((a, b) => b.all.total - a.all.total),
+    totals, byStatus
+  };
+}
+
+module.exports = { loadTasks, inRange, productionReport, productionBoard, cpReport, uaReport };

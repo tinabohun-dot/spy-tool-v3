@@ -349,6 +349,17 @@ app.get('/api/analytics/retention', async (req, res) => {
   }
 });
 
+app.get('/api/production/board', async (req, res) => {
+  try {
+    const { since, until } = req.query;
+    if (!since || !until) return res.status(400).json({ error: 'Нужны параметры since и until' });
+    res.json(await airtable.productionBoard(since, until));
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 app.get('/api/analytics/countries', async (req, res) => {
   try {
     const { since, until } = req.query;
