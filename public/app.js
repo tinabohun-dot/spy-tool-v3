@@ -1031,6 +1031,18 @@ $('#analytics-table thead').addEventListener('click', (e) => {
   renderAnalyticsView();
 });
 
+function summarizeCreatives(creatives) {
+  const totalSpend = creatives.reduce((a, c) => a + (c.spend || 0), 0);
+  const totalPurchases = creatives.reduce((a, c) => a + (c.purchases || 0), 0);
+  const successCount = creatives.filter((c) => SUCCESS_GRADES.includes(c.grade)).length;
+  return {
+    totalSpend, totalPurchases,
+    overallCpa: totalPurchases > 0 ? totalSpend / totalPurchases : null,
+    successCount,
+    successRate: creatives.length ? successCount / creatives.length : 0
+  };
+}
+
 function renderAnalyticsSummary(summary, count) {
   $('#analytics-summary').innerHTML = `
     <div class="panel-card"><h3>Расход</h3><p class="big-number">${money(summary.totalSpend)}</p></div>
@@ -1144,8 +1156,6 @@ function renderAnalyticsView() {
     ? analyticsData.overall
     : analyticsData.byAccount[analyticsAccountFilter];
 
-  renderAnalyticsSummary(source.summary, source.creatives.length);
-
   let creatives = source.creatives.filter((c) => {
     if (analyticsGradeFilter && c.grade !== analyticsGradeFilter) return false;
     if (analyticsTypeFilter && c.type !== analyticsTypeFilter) return false;
@@ -1153,6 +1163,10 @@ function renderAnalyticsView() {
     if (analyticsNameFilter && !c.name.toLowerCase().includes(analyticsNameFilter)) return false;
     return true;
   });
+
+  // Карточки сверху считаем по тем же креативам, что видны в таблице, —
+  // иначе при выборе воронки/грейда/типа/поиска цифры не менялись бы.
+  renderAnalyticsSummary(summarizeCreatives(creatives), creatives.length);
 
   creatives = sortCreatives(creatives, analyticsSort);
   const { key } = analyticsSort;
