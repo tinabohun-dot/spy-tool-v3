@@ -48,11 +48,13 @@ $all('.side-nav__item').forEach((btn) => {
     $('#view-library').hidden = view !== 'library';
     $('#view-jobs').hidden = view !== 'jobs';
     $('#view-analytics').hidden = view !== 'analytics';
+    $('#view-prod').hidden = view !== 'prod';
     $('#view-sr').hidden = view !== 'sr';
     $('#view-ret').hidden = view !== 'ret';
     $('#view-brand').hidden = true;
     if (view === 'jobs') startJobsPolling(); else stopJobsPolling();
     if (view === 'analytics') initAnalyticsView();
+    if (view === 'prod') initProdView();
     if (view === 'sr') initSrView();
     if (view === 'ret') initRetView();
   });
@@ -1606,6 +1608,109 @@ async function loadUa(since, until) {
   }
 }
 
+// ---------- Production: доска по воронкам (To Test → Ready Test / Send UA) ----------
+let prodInited = false;
+let prodData = null;
+const PROD_COLORS = [
+  [/brain/i, '#cfe5fb'], [/sensory/i, '#f0bcd3'], [/bul+y/i, '#c9b6f8'], [/mix/i, '#fbe5a2'], [/child/i, '#c8ecd8']
+];
+const PROD_FALLBACK = ['#ffd9b8', '#d5e8a8', '#b8e6ea', '#e6c9e9', '#e3e3e3'];
+function prodColor(name, i) {
+  const hit = PROD_COLORS.find(([re]) => re.test(name));
+  return hit ? hit[1] : PROD_FALLBACK[i % PROD_FALLBACK.length];
+}
+
+function setProdPeriod(days) {
+  const today = new Date();
+  $('#prod-until').value = today.toISOString().slice(0, 10);
+  $('#prod-since').value = new Date(today.getTime() - days * 86400000).toISOString().slice(0, 10);
+  $all('#prod-period-presets .segmented__btn').forEach((b) => b.classList.toggle('is-active', +b.dataset.days === days));
+}
+
+function initProdView() {
+  if (prodInited) return;
+  prodInited = true;
+  setProdPeriod(7);
+  loadProduction();
+}
+
+async function loadProduction() {
+  const since = $('#prod-since').value, until = $('#prod-until').value;
+  $('#prod-status').textContent = 'Загружаю...';
+  $('#prod-detail').hidden = true;
+  try {
+    prodData = await fetchJson(`/api/production/board?${new URLSearchParams({ since, until })}`);
+    $('#prod-status').textContent = '';
+    renderProduction();
+  } catch (err) {
+    $('#prod-status').textContent = 'Ошибка: ' + err.message;
+  }
+}
+
+function prodCells(b, fKey, kind, withL) {
+  const cell = (t, label) => `<button type="button" class="prod-cell" data-f="${fKey}" data-k="${kind}" data-t="${t}" ${b[t].length ? '' : 'disabled'}><span>${label}</span><strong>${b[t].length}</strong></button>`;
+  return `<div class="prod-cells prod-cells--${withL ? 3 : 2}">${cell('S', 'S')}${cell('V', 'V')}${withL ? cell('L', 'L') : ''}</div>`;
+}
+
+function renderProduction() {
+  const d = prodData;
+  const t = d.totals;
+  const withL = t.all.L.length > 0;
+  if (!d.funnels.length) {
+    $('#prod-board').innerHTML = `<p class="hint">За период ${d.since} — ${d.until} нет креативов с датой «When 'To Test'».</p>`;
+    return;
+  }
+  const cols = d.funnels.map((f, i) => `
+    <div class="prod-col">
+      <div class="prod-col__head" style="background:${prodColor(f.name, i)}">${srEsc(f.name)}</div>
+      <button type="button" class="prod-total" data-f="${i}" data-k="all" data-t="ALL"><strong>${f.all.total}</strong><span>TOTAL</span></button>
+      <div class="prod-bar prod-bar--ready"><span>READY TEST</span><strong>${f.readyTest.total}</strong></div>
+      ${prodCells(f.readyTest, i, 'readyTest', withL)}
+      <div class="prod-bar prod-bar--ua"><span>SEND UA</span><strong>${f.sentUA.total}</strong></div>
+      ${prodCells(f.sentUA, i, 'sentUA', withL)}
+    </div>`).join('');
+  const formats = `S: ${t.all.S.length} · V: ${t.all.V.length}` + (withL ? ` · L: ${t.all.L.length}` : '');
+  $('#prod-board').innerHTML = `
+    <div class="prod-title"><strong>${t.all.total} CREATIVES</strong> <span>across ${d.funnels.length} funnels</span>
+      <span class="hint">· To Test с ${d.since} по ${d.until}</span></div>
+    <div class="panel-card prod-card"><div class="prod-cols">${cols}</div></div>
+    <div class="prod-summary">TOTAL: ${t.all.total} · READY TEST: ${t.readyTest.total} · SEND UA: ${t.sentUA.total} · ${formats}</div>
+    <p class="hint">Нажми на число, чтобы увидеть список креативов. «Send UA» — креативы, которые уже ушли в UA (есть дата «When 'Sent UA'»), «Ready Test» — остальные из попавших в период.</p>`;
+}
+
+$('#prod-board').addEventListener('click', (e) => {
+  const el = e.target.closest('[data-f]');
+  if (!el || el.disabled) return;
+  const f = prodData.funnels[+el.dataset.f];
+  const { k, t } = el.dataset;
+  const kindLabel = { all: 'Всего', readyTest: 'Ready Test', sentUA: 'Send UA' }[k];
+  const src = f[k];
+  const items = t === 'ALL' ? [...src.S, ...src.V, ...src.L, ...src.O] : src[t];
+  const fmtLabel = t === 'ALL' ? 'все форматы' : { S: 'статика', V: 'видео', L: 'лонгрид' }[t];
+  $('#prod-detail').hidden = false;
+  $('#prod-detail').innerHTML = `<h3>${srEsc(f.name)} · ${kindLabel} · ${fmtLabel} <span class="hint">— ${items.length}</span></h3>
+    <ul class="prod-list">${items.map((x) => `<li><strong>${srEsc(x.taskId ?? '—')}</strong> ${srEsc(x.taskName || '')}
+      <span class="hint">${[x.status, x.designer, x.cp].filter(Boolean).map(srEsc).join(' · ')}</span></li>`).join('')}</ul>`;
+  $('#prod-detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+});
+
+$('#prod-period-presets').addEventListener('click', (e) => {
+  const btn = e.target.closest('.segmented__btn');
+  if (!btn || btn.id === 'prod-closed-week-btn') return;
+  setProdPeriod(+btn.dataset.days);
+  loadProduction();
+});
+$('#prod-closed-week-btn').addEventListener('click', () => {
+  const today = new Date();
+  const daysSinceMonday = (today.getDay() + 6) % 7;
+  const thisMonday = new Date(today.getTime() - daysSinceMonday * 86400000);
+  $('#prod-since').value = new Date(thisMonday.getTime() - 7 * 86400000).toISOString().slice(0, 10);
+  $('#prod-until').value = new Date(thisMonday.getTime() - 86400000).toISOString().slice(0, 10);
+  $all('#prod-period-presets .segmented__btn').forEach((b) => b.classList.toggle('is-active', b.id === 'prod-closed-week-btn'));
+  loadProduction();
+});
+$('#prod-filters').addEventListener('submit', (e) => { e.preventDefault(); loadProduction(); });
+
 // ---------- Success Rate (отдельный раздел в левом меню) ----------
 let srInited = false;
 let srSubtab = 'sr';
@@ -2387,6 +2492,7 @@ function bindDateAutoApply(sinceSel, untilSel, presetsSel, reload) {
   }
 }
 bindDateAutoApply('#analytics-since', '#analytics-until', '#analytics-period-presets', () => loadActiveSubtab());
+bindDateAutoApply('#prod-since', '#prod-until', '#prod-period-presets', () => loadProduction());
 bindDateAutoApply('#sr-since', '#sr-until', '#sr-period-presets', () => loadSrActiveSubtab());
 bindDateAutoApply('#ret-since', '#ret-until', '#ret-period-presets', () => loadRetention());
 

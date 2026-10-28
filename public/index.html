@@ -25,6 +25,7 @@
       <button class="side-nav__item is-active" data-view="library">Ad Library</button>
       <button class="side-nav__item" data-view="jobs">Сбор данных</button>
       <button class="side-nav__item" data-view="analytics">Аналитика</button>
+      <button class="side-nav__item" data-view="prod">Production</button>
       <button class="side-nav__item" data-view="sr">Success Rate</button>
       <button class="side-nav__item" data-view="ret">Retention</button>
     </nav>
@@ -204,6 +205,34 @@
     </section>
 
     <!-- ===== Аналитика: перформанс своих рекламных кабинетов ===== -->
+    <section id="view-prod" class="view" hidden>
+      <div class="view__header">
+        <h1>Production</h1>
+        <p class="view__sub">Сколько креативов дошло до «To Test» за период — по воронкам: сколько ждёт запуска (Ready Test) и сколько уже ушло в UA (Send UA), статика / видео.</p>
+      </div>
+      <form id="prod-filters" class="analytics-filters">
+        <div class="segmented" id="prod-period-presets">
+          <button type="button" class="segmented__btn" data-days="0">Сегодня</button>
+          <button type="button" class="segmented__btn is-active" data-days="7">7 дней</button>
+          <button type="button" class="segmented__btn" data-days="14">14 дней</button>
+          <button type="button" class="segmented__btn" data-days="30">30 дней</button>
+          <button type="button" class="segmented__btn" id="prod-closed-week-btn">Закрытая неделя</button>
+        </div>
+        <label class="field">
+          <span class="field__label">С (When 'To Test')</span>
+          <input type="date" id="prod-since" required />
+        </label>
+        <label class="field">
+          <span class="field__label">По (включительно)</span>
+          <input type="date" id="prod-until" required />
+        </label>
+        <button type="submit" class="btn btn--primary">Показать</button>
+      </form>
+      <div id="prod-status" class="status-line"></div>
+      <div id="prod-board" class="prod-board"></div>
+      <div id="prod-detail" class="panel-card prod-detail" hidden></div>
+    </section>
+
     <section id="view-sr" class="view" hidden>
       <div class="view__header">
         <h1>Success Rate</h1>
