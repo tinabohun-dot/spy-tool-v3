@@ -2001,7 +2001,8 @@ function creativeListHtml(items, bySec) {
   const cell = (v) => (v == null ? '—' : srPct(v));
   const rows = items.map((c) => {
     const gc = GRADE_BADGE_COLORS[c.grade] || { bg: '#eee', color: '#333' };
-    const rets = bySec ? [c.t3, c.t5, c.t10, c.t15] : [c.p25r, c.p50r, c.p75r, c.p100r];
+    const rets = bySec === 'all' ? [c.t3, c.t5, c.t10, c.t15, c.p25r, c.p50r, c.p75r, c.p100r]
+      : bySec ? [c.t3, c.t5, c.t10, c.t15] : [c.p25r, c.p50r, c.p75r, c.p100r];
     return `<tr>
       <td>${c.previewUrl ? `<img class="thumb ret-thumb" src="${c.previewUrl}" loading="lazy" data-ad-id="${c.adId}" data-ad-name="${srEsc(c.name)}" title="Кликни, чтобы посмотреть крео" />` : ''}</td>
       <td class="ret-name" title="${srEsc(c.name)}">${srEsc(c.name)}</td>
@@ -2010,7 +2011,8 @@ function creativeListHtml(items, bySec) {
       ${rets.map((v) => `<td>${cell(v)}</td>`).join('')}
       <td class="ret-sep">${c.linkClicks}</td><td>${c.landingViews}</td><td>${srPct(c.lpvRate)}</td><td><strong>${c.purchases}</strong></td><td>${c.cpa ? '$' + Math.round(c.cpa) : '—'}</td></tr>`;
   }).join('');
-  const heads = bySec ? ['3 сек', '5 сек', '10 сек', '15 сек'] : ['25%', '50%', '75%', '100%'];
+  const heads = bySec === 'all' ? ['3 сек', '5 сек', '10 сек', '15 сек', '25%', '50%', '75%', '100%']
+    : bySec ? ['3 сек', '5 сек', '10 сек', '15 сек'] : ['25%', '50%', '75%', '100%'];
   return `<div class="table-scroll"><table class="table analytics-table"><thead><tr><th>Превью</th><th>Название</th><th>Grade</th><th>Spend</th><th>Показы</th><th>Plays</th>
     ${heads.map((h) => `<th>${h}</th>`).join('')}<th class="ret-sep">Клики</th><th>LPV</th><th>LPV / клики</th><th>Покупки</th><th>CPA</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
@@ -2102,18 +2104,15 @@ function renderDropoff() {
 // ---------- Воронка (график): синий — дошли, штриховка — потеряли ----------
 const VIZ_H = 260;
 
-function vizSteps(t, path) {
-  if (path === 'video') {
-    const steps = [['Plays', t.plays]];
-    if (t.sec) [['3 сек', 0], ['5 сек', 1], ['10 сек', 2], ['15 сек', 3]].forEach(([l, i]) => steps.push([l, t.plays * t.sec[i] / 100]));
-    steps.push(['25%', t.p25], ['50%', t.p50], ['75%', t.p75], ['100%', t.p100]);
-    return steps;
-  }
-  // Третий элемент — индекс шага, от которого считается штриховка: клики идут не
-  // "после 100% просмотра", а от 3-сек. просмотров, поэтому сравниваем с ними.
-  return [['Показы', t.impressions], ['Plays', t.plays], ['3-сек. просмотры', t.views3s],
-    ['25%', t.p25], ['50%', t.p50], ['75%', t.p75], ['100%', t.p100],
-    ['Клики', t.linkClicks, 2], ['Просмотр лендинга', t.landingViews], ['Покупки', t.purchases]];
+// Весь путь зрителя на одном графике: показ → просмотр → секунды → 25/50/75/100% →
+// клик → лендинг → покупка. Третий элемент шага — подпись шага, от которого
+// считается штриховка: клики идут не "после 100% просмотра", а от 3-сек. просмотров.
+function vizSteps(t) {
+  const steps = [['Показы', t.impressions], ['Plays', t.plays], ['3-сек. просмотры', t.views3s]];
+  if (t.sec) [['5 сек', 1], ['10 сек', 2], ['15 сек', 3]].forEach(([l, k]) => steps.push([l, t.plays * t.sec[k] / 100]));
+  steps.push(['25%', t.p25], ['50%', t.p50], ['75%', t.p75], ['100%', t.p100]);
+  steps.push(['Клики', t.linkClicks, '3-сек. просмотры'], ['Просмотр лендинга', t.landingViews], ['Покупки', t.purchases]);
+  return steps;
 }
 
 let vizGroups = [];
@@ -2124,7 +2123,8 @@ function vizChartHtml(title, count, steps, idx) {
   const cols = steps.map(([label, v, ref], i) => {
     const pct = Math.max(0, v / base);
     pcts.push(pct);
-    const prev = i === 0 ? 1 : pcts[ref != null ? ref : i - 1];
+    const refIdx = ref != null ? steps.findIndex((x) => x[0] === ref) : -1;
+    const prev = i === 0 ? 1 : pcts[refIdx >= 0 ? refIdx : i - 1];
     const solid = Math.max(2, pct * VIZ_H);
     const hatch = Math.max(0, (prev - pct) * VIZ_H);
     const html = `<div class="viz__col">
@@ -2143,7 +2143,6 @@ function vizChartHtml(title, count, steps, idx) {
 
 function renderViz() {
   const list = retFiltered;
-  const path = $('#viz-path').value;
   if (!list.length) { $('#viz-charts').innerHTML = '<p class="hint">Нет видео-креативов под эти фильтры</p>'; return; }
   const funnels = [...new Set(list.map((c) => c.funnel))]
     .map((name) => ({ name, items: list.filter((c) => c.funnel === name) }))
@@ -2155,7 +2154,7 @@ function renderViz() {
     `В расчёт попадают только видео (статика и лонгриды без метрик просмотра) с показами не меньше ${minImpr}` +
     ($('#ret-funnel-filter').value ? `, воронка «${$('#ret-funnel-filter').value}»` : '') +
     '. Увеличь период или снизь «Мин. показов», чтобы увидеть больше. Нажми «Показать креативы» у графика, чтобы увидеть список.';
-  $('#viz-charts').innerHTML = vizGroups.map((g, i) => vizChartHtml(g.label, g.items.length, vizSteps(dropAggregate(g.items), path), i)).join('');
+  $('#viz-charts').innerHTML = vizGroups.map((g, i) => vizChartHtml(g.label, g.items.length, vizSteps(dropAggregate(g.items)), i)).join('');
 }
 
 // Клик по кнопке (или по столбцу) раскрывает список креативов этого графика.
@@ -2167,14 +2166,13 @@ $('#viz-charts').addEventListener('click', (e) => {
   if (box.hidden) {
     const g = vizGroups[+card.dataset.idx];
     const items = g.items.map(retDerive).sort((a, b) => b.spend - a.spend);
-    box.innerHTML = creativeListHtml(items, $('#viz-path').value === 'video');
+    box.innerHTML = creativeListHtml(items, 'all');
     box.hidden = false;
   } else {
     box.hidden = true;
   }
   card.querySelector('.viz-toggle').textContent = box.hidden ? 'Показать креативы ▾' : 'Скрыть креативы ▴';
 });
-$('#viz-path').addEventListener('change', renderViz);
 
 $('#ret-subtabs').addEventListener('click', (e) => {
   const btn = e.target.closest('.tab');

@@ -492,8 +492,8 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
 #drop-detail h4 { margin: 0 0 8px; }
 
 .viz-card { margin-bottom: 14px; }
-.viz { display: flex; align-items: flex-end; gap: 10px; padding-top: 34px; overflow-x: auto; }
-.viz__col { flex: 1; min-width: 58px; display: flex; flex-direction: column; }
+.viz { display: flex; align-items: flex-end; gap: 6px; padding-top: 34px; overflow-x: auto; }
+.viz__col { flex: 1; min-width: 46px; display: flex; flex-direction: column; }
 .viz__stack { position: relative; height: 260px; display: flex; flex-direction: column; justify-content: flex-end; border-bottom: 1px solid var(--line); }
 .viz__hatch { background: repeating-linear-gradient(135deg, #bcd0f7 0 4px, #e6eefc 4px 8px); }
 .viz__solid { background: #3366e6; }
