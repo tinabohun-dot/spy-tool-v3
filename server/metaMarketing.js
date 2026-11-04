@@ -492,6 +492,18 @@ function filterRowsByCampaignMode(rows, mode) {
   return rows.filter((r) => (mode === 'creo-test' ? isCreoTest(r) : !isCreoTest(r)));
 }
 
+// Ручные исключения: покупки взяты из Amplitude (там пиксель Meta недосчитывается),
+// CPA считаем в таргете. Срабатывает только если расход совпадает с октябрьским
+// ($829.06), чтобы не искажать другие периоды этого же креатива.
+const PURCHASE_OVERRIDES = [
+  { key: '1005_n3', spend: 829.06, purchases: 11, cpaOk: true }
+];
+
+function findPurchaseOverride(name, spend) {
+  const key = getCreativeGroupKey(name);
+  return PURCHASE_OVERRIDES.find((o) => o.key === key && Math.abs(o.spend - spend) < 1) || null;
+}
+
 function buildCreativeEntry(row) {
   const impressions = parseInt(row.impressions || 0, 10);
   const reach = parseInt(row.reach || 0, 10);
@@ -501,7 +513,8 @@ function buildCreativeEntry(row) {
   const linkClicks = sumActionTypes(row.actions, ['link_click']);
   const landingViews = getAction(row.actions, 'landing_page_view');
   const addToCart = getAction(row.actions, 'add_to_cart');
-  const purchases = getActionByPriority(row.actions, PURCHASE_TYPES_PRIORITY);
+  const override = findPurchaseOverride(row.ad_name, spend);
+  const purchases = override ? override.purchases : getActionByPriority(row.actions, PURCHASE_TYPES_PRIORITY);
   const purchaseValue = getActionByPriority(row.action_values, PURCHASE_TYPES_PRIORITY);
   const leads = getActionByPriority(row.actions, LEAD_TYPES_PRIORITY);
   const videoViews3s = getAction(row.actions, 'video_view');
@@ -562,7 +575,7 @@ function buildCreativeEntry(row) {
     videoP75: isVideo ? getVideoMetric(row.video_p75_watched_actions) : null,
     videoP100: isVideo ? getVideoMetric(row.video_p100_watched_actions) : null,
     avgWatchTime: isVideo ? getVideoMetric(row.video_avg_time_watched_actions) : null,
-    grade: getGrade(purchases, cpa)
+    grade: getGrade(purchases, override && override.cpaOk ? 0 : cpa)
   };
 }
 
