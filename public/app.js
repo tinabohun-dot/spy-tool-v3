@@ -1645,18 +1645,26 @@ function initProdView() {
   if (prodInited) return;
   prodInited = true;
   setProdPeriod(7);
-  loadProduction();
+  loadProdBoard();
 }
 
-async function loadProduction() {
+// Вызовы с датами в поле могут идти пачкой (при наборе даты вручную), и более
+// медленный старый ответ не должен затирать свежий — поэтому нумеруем запросы.
+// (Имя не loadProduction: так уже называется загрузчик вкладки Design.)
+let prodRequestSeq = 0;
+async function loadProdBoard() {
   const since = $('#prod-since').value, until = $('#prod-until').value;
+  const seq = ++prodRequestSeq;
   $('#prod-status').textContent = 'Загружаю...';
   $('#prod-detail').hidden = true;
   try {
-    prodData = await fetchJson(`/api/production/board?${new URLSearchParams({ since, until })}`);
+    const data = await fetchJson(`/api/production/board?${new URLSearchParams({ since, until })}`);
+    if (seq !== prodRequestSeq) return;
+    prodData = data;
     $('#prod-status').textContent = '';
     renderProduction();
   } catch (err) {
+    if (seq !== prodRequestSeq) return;
     $('#prod-status').textContent = 'Ошибка: ' + err.message;
   }
 }
@@ -1736,7 +1744,7 @@ $('#prod-period-presets').addEventListener('click', (e) => {
   const btn = e.target.closest('.segmented__btn');
   if (!btn || btn.id === 'prod-closed-week-btn') return;
   setProdPeriod(+btn.dataset.days);
-  loadProduction();
+  loadProdBoard();
 });
 $('#prod-closed-week-btn').addEventListener('click', () => {
   const today = new Date();
@@ -1745,9 +1753,9 @@ $('#prod-closed-week-btn').addEventListener('click', () => {
   $('#prod-since').value = new Date(thisMonday.getTime() - 7 * 86400000).toISOString().slice(0, 10);
   $('#prod-until').value = new Date(thisMonday.getTime() - 86400000).toISOString().slice(0, 10);
   $all('#prod-period-presets .segmented__btn').forEach((b) => b.classList.toggle('is-active', b.id === 'prod-closed-week-btn'));
-  loadProduction();
+  loadProdBoard();
 });
-$('#prod-filters').addEventListener('submit', (e) => { e.preventDefault(); loadProduction(); });
+$('#prod-filters').addEventListener('submit', (e) => { e.preventDefault(); loadProdBoard(); });
 
 // ---------- Success Rate (отдельный раздел в левом меню) ----------
 let srInited = false;
@@ -2533,7 +2541,7 @@ function bindDateAutoApply(sinceSel, untilSel, presetsSel, reload) {
   }
 }
 bindDateAutoApply('#analytics-since', '#analytics-until', '#analytics-period-presets', () => loadActiveSubtab());
-bindDateAutoApply('#prod-since', '#prod-until', '#prod-period-presets', () => loadProduction());
+bindDateAutoApply('#prod-since', '#prod-until', '#prod-period-presets', () => loadProdBoard());
 bindDateAutoApply('#sr-since', '#sr-until', '#sr-period-presets', () => loadSrActiveSubtab());
 bindDateAutoApply('#ret-since', '#ret-until', '#ret-period-presets', () => loadRetention());
 
