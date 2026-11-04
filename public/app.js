@@ -1661,7 +1661,7 @@ async function loadProduction() {
   }
 }
 
-const PROD_TYPES = [['V', 'Videos', '#0f4d3a'], ['S', 'Statics', '#4b2a96'], ['L', 'Longreads', '#a08ad8']];
+const PROD_TYPES = [['V', 'Video', '#0f4d3a'], ['S', 'Static', '#4b2a96'], ['L', 'Longread', '#a08ad8']];
 
 function prodBars(rows, fIdx, max) {
   return rows.map(([label, count, color, k, t]) => {
