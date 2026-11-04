@@ -1779,6 +1779,7 @@ function loadSrActiveSubtab() {
   const until = $('#sr-until').value;
   if (srSubtab === 'sr') return loadSuccessRate(since, until);
   if (srSubtab === 'testing') return loadTesting(since, until);
+  if (srSubtab === 'weekly') return loadWeekly();
 }
 
 function initSrView() {
@@ -1792,6 +1793,8 @@ $('#sr-subtabs').addEventListener('click', (e) => {
   const btn = e.target.closest('.tab');
   if (!btn) return;
   srSubtab = btn.dataset.subtab;
+  // У недельной динамики свои элементы выбора периода — общий фильтр дат скрываем.
+  $('#sr-filters').hidden = srSubtab === 'weekly';
   $all('#sr-subtabs .tab').forEach((b) => b.classList.toggle('is-active', b === btn));
   $all('#view-sr .tab-panel').forEach((p) => p.classList.toggle('is-active', p.id === `subtab-${srSubtab}`));
   loadSrActiveSubtab();
@@ -2398,6 +2401,119 @@ async function loadSuccessRate(since, until) {
   } catch (err) {
     $('#sr-status').textContent = 'Ошибка: ' + err.message;
   }
+}
+
+// ---------- Динамика по неделям ----------
+const RU_MONTHS = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+function weekLabel(since, until) {
+  const a = new Date(since + 'T00:00:00Z'), b = new Date(until + 'T00:00:00Z');
+  return a.getUTCMonth() === b.getUTCMonth()
+    ? `${a.getUTCDate()}–${b.getUTCDate()} ${RU_MONTHS[b.getUTCMonth()]}`
+    : `${a.getUTCDate()} ${RU_MONTHS[a.getUTCMonth()]} – ${b.getUTCDate()} ${RU_MONTHS[b.getUTCMonth()]}`;
+}
+const signedPct = (v) => (v == null ? '—' : (v >= 0 ? '+' : '') + Math.round(v * 100) + '%');
+const wkMoney = (v) => (v == null ? '—' : '$' + Math.round(v).toLocaleString('en-US'));
+
+let wkSeq = 0;
+async function loadWeekly() {
+  if (!$('#wk-end').value) $('#wk-end').value = new Date().toISOString().slice(0, 10);
+  const seq = ++wkSeq;
+  $('#sr-status').textContent = 'Считаю недели... (каждая неделя — отдельный запрос в Meta, может занять до минуты)';
+  try {
+    const params = new URLSearchParams({ end: $('#wk-end').value, weeks: $('#wk-weeks').value });
+    const data = await fetchJson(`/api/analytics/weekly?${params}`);
+    if (seq !== wkSeq) return;
+    $('#sr-status').textContent = '';
+    renderWeekly(data);
+  } catch (err) {
+    if (seq !== wkSeq) return;
+    $('#sr-status').textContent = 'Ошибка: ' + err.message;
+  }
+}
+$('#wk-weeks').addEventListener('change', loadWeekly);
+$('#wk-end').addEventListener('change', () => { if ($('#wk-end').value) loadWeekly(); });
+
+// Подписи значений над столбиками (Chart.js без плагинов их не рисует).
+const wkValueLabels = {
+  id: 'wkValueLabels',
+  afterDatasetsDraw(chart) {
+    const { ctx } = chart;
+    chart.data.datasets.forEach((ds, i) => {
+      if (ds.type === 'line' || !ds.labelFmt) return;
+      chart.getDatasetMeta(i).data.forEach((bar, j) => {
+        ctx.save();
+        ctx.fillStyle = '#1f2a28'; ctx.font = '600 13px sans-serif'; ctx.textAlign = 'center';
+        ctx.fillText(ds.labelFmt(ds.data[j]), bar.x, bar.y - 6);
+        ctx.restore();
+      });
+    });
+  }
+};
+
+function renderWeekly(d) {
+  const W = d.weeks;
+  if (!W.length) { $('#wk-board').innerHTML = '<p class="hint">Нет данных.</p>'; return; }
+  const first = W[0], last = W[W.length - 1];
+  const badges = (w) => [
+    d.best === w.since && ['good', 'Лучшая эффективность'],
+    d.mostPurchases === w.since && ['warm', 'Больше всего покупок'],
+    d.weakest === w.since && ['bad', 'Слабая эффективность'],
+    w.partial && ['muted', 'Неделя ещё идёт']
+  ].filter(Boolean).map(([k, t]) => `<div class="wk-badge wk-badge--${k}">${t}</div>`).join('');
+  const row = (l, v) => `<div class="wk-row"><span>${l}</span><i></i><strong>${v}</strong></div>`;
+  const cards = W.map((w) => `<div class="wk-card${d.best === w.since ? ' wk-card--best' : ''}">
+      <h4>${weekLabel(w.since, w.until)}</h4>
+      ${row('Креативы', w.creatives)}${row('Расход', wkMoney(w.spend))}${row('Покупки', w.purchases)}
+      ${row('CPA', wkMoney(w.cpa))}${row('Positive-tier rate', srPct(w.positiveRate))}
+      <div class="wk-badges">${badges(w)}</div></div>`).join('');
+
+  const byStart = Object.fromEntries(W.map((w) => [w.since, w]));
+  const lab = (w) => weekLabel(w.since, w.until);
+  const insight = (cls, icon, title, w, text) => w ? `<div class="wk-insight wk-insight--${cls}"><div class="wk-insight__icon">${icon}</div>
+      <div><strong>${title}</strong><p><b>${lab(w)}:</b> ${text}</p></div></div>` : '';
+  const insights = [
+    insight('good', '↗', 'Лучшая неделя', byStart[d.best], `CPA ${wkMoney(byStart[d.best]?.cpa)} и Positive-tier rate ${srPct(byStart[d.best]?.positiveRate)} при ${byStart[d.best]?.creatives} протестированных креативах.`),
+    insight('warm', '🛒', 'Максимум покупок', byStart[d.mostPurchases], `${byStart[d.mostPurchases]?.purchases} покупок. Расход ${wkMoney(byStart[d.mostPurchases]?.spend)}, CPA ${wkMoney(byStart[d.mostPurchases]?.cpa)}.`),
+    insight('bad', '!', 'Слабая точка', byStart[d.weakest], `${byStart[d.weakest]?.purchases} покупок и самый высокий CPA — ${wkMoney(byStart[d.weakest]?.cpa)}.`)
+  ].join('');
+  const tr = d.trend;
+  const banner = tr ? `От ${lab(byStart[tr.from])} до ${lab(byStart[tr.to])} покупки изменились на ${signedPct(tr.purchasesPct)}, расход — на ${signedPct(tr.spendPct)}, а Positive-tier rate — с ${srPct(tr.rateFrom)} до ${srPct(tr.rateTo)}.` : '';
+
+  $('#wk-board').innerHTML = `
+    <div class="wk-head"><span class="wk-head__kicker">${weekLabel(first.since, first.until)} → ${weekLabel(last.since, last.until)}</span>
+      <h2>Weekly Performance Dynamics</h2><p class="hint">Понедельная динамика тестирования и эффективности креативов (недели пн–вс, обе границы включительно)</p></div>
+    <div class="wk-cards">${cards}</div>
+    <div class="wk-charts">
+      <div class="panel-card"><h4>PURCHASES &amp; CPA</h4><div class="wk-canvas"><canvas id="wk-chart-1"></canvas></div></div>
+      <div class="panel-card"><h4>TESTING VOLUME &amp; POSITIVE-TIER RATE</h4><div class="wk-canvas"><canvas id="wk-chart-2"></canvas></div></div>
+    </div>
+    <div class="wk-insights">${insights}</div>
+    ${banner ? `<div class="wk-banner">${banner}</div>` : ''}
+    <p class="hint">Positive-tier rate — доля креативов с грейдом Promising и выше (грейд считается по данным самой недели). Креативы могут повторяться в разных неделях. Незавершённая неделя не участвует в «лучшей/слабой» и в итоговом сравнении.</p>`;
+
+  const labels = W.map(lab);
+  const grid = { color: 'rgba(0,0,0,.06)' };
+  destroyChart('wk1'); destroyChart('wk2');
+  charts.wk1 = new Chart($('#wk-chart-1'), {
+    data: { labels, datasets: [
+      { type: 'bar', label: 'Purchases', data: W.map((w) => w.purchases), backgroundColor: '#0f4d3a', yAxisID: 'y', labelFmt: (v) => v },
+      { type: 'line', label: 'CPA ($)', data: W.map((w) => (w.cpa == null ? null : Math.round(w.cpa))), borderColor: '#5b34e3', backgroundColor: '#5b34e3', yAxisID: 'y1', tension: 0.25, pointRadius: 5 }
+    ] },
+    options: { maintainAspectRatio: false, layout: { padding: { top: 22 } }, scales: {
+      y: { beginAtZero: true, title: { display: true, text: 'PURCHASES' }, grid },
+      y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'CPA ($)' }, grid: { drawOnChartArea: false } } } },
+    plugins: [wkValueLabels]
+  });
+  charts.wk2 = new Chart($('#wk-chart-2'), {
+    data: { labels, datasets: [
+      { type: 'bar', label: 'Creatives tested', data: W.map((w) => w.creatives), backgroundColor: '#f08a3c', yAxisID: 'y', labelFmt: (v) => v },
+      { type: 'line', label: 'Positive-tier rate (%)', data: W.map((w) => +(w.positiveRate * 100).toFixed(1)), borderColor: '#5b34e3', backgroundColor: '#5b34e3', yAxisID: 'y1', tension: 0.25, pointRadius: 5 }
+    ] },
+    options: { maintainAspectRatio: false, layout: { padding: { top: 22 } }, scales: {
+      y: { beginAtZero: true, title: { display: true, text: 'CREATIVES TESTED' }, grid },
+      y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'POSITIVE-TIER RATE (%)' }, grid: { drawOnChartArea: false } } } },
+    plugins: [wkValueLabels]
+  });
 }
 
 // ---------- Эффективность тестирования ----------

@@ -261,6 +261,7 @@
       <div class="tabs" id="sr-subtabs">
         <button type="button" class="tab is-active" data-subtab="sr">Success Rate</button>
         <button type="button" class="tab" data-subtab="testing">Эффективность тестов</button>
+        <button type="button" class="tab" data-subtab="weekly">Динамика по неделям</button>
       </div>
 
       <div id="subtab-sr" class="tab-panel is-active">
@@ -289,6 +290,23 @@
           </div>
           <div id="sr-details"></div>
         </div>
+      </div>
+
+      <div id="subtab-weekly" class="tab-panel">
+        <div class="analytics-table-toolbar wk-toolbar">
+          <label class="ret-field">Сколько недель
+            <select id="wk-weeks" class="select">
+              <option value="4">4 недели</option>
+              <option value="6">6 недель</option>
+              <option value="8">8 недель</option>
+              <option value="12">12 недель</option>
+            </select>
+          </label>
+          <label class="ret-field">Последняя неделя — та, что содержит дату
+            <input type="date" id="wk-end" class="select" />
+          </label>
+        </div>
+        <div id="wk-board"></div>
       </div>
 
       <div id="subtab-testing" class="tab-panel">

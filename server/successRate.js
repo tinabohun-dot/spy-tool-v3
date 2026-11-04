@@ -224,4 +224,69 @@ async function testingReport(since, until) {
   };
 }
 
-module.exports = { successRateReport, testingReport };
+
+// Недельная динамика: для каждой недели (пн–вс) креативы с расходом, расход,
+// покупки, CPA и Positive-tier rate (доля креативов с грейдом Promising+,
+// грейд считается по данным самой недели — одни и те же креативы могут
+// встречаться в соседних неделях). Незавершённая неделя помечается partial и
+// не участвует в "лучшая/слабая неделя" и в сравнении первой и последней.
+const DAY_MS = 86400000;
+const isoDay = (d) => d.toISOString().slice(0, 10);
+
+function weekRanges(endDate, weeks) {
+  const end = new Date(endDate + 'T00:00:00Z');
+  const lastMonday = new Date(end.getTime() - ((end.getUTCDay() + 6) % 7) * DAY_MS);
+  const todayIso = isoDay(new Date());
+  return Array.from({ length: weeks }, (_, i) => {
+    const monday = new Date(lastMonday.getTime() - (weeks - 1 - i) * 7 * DAY_MS);
+    const sunday = new Date(monday.getTime() + 6 * DAY_MS);
+    return { since: isoDay(monday), until: isoDay(sunday), partial: isoDay(sunday) >= todayIso };
+  });
+}
+
+async function weeklyReport(endDate, weeks) {
+  const ranges = weekRanges(endDate, weeks);
+  const results = new Array(ranges.length);
+  let next = 0;
+  // Не больше 3 недель одновременно, чтобы не упереться в лимиты Meta.
+  await Promise.all(Array.from({ length: Math.min(3, ranges.length) }, async () => {
+    while (next < ranges.length) {
+      const i = next++;
+      const { since, until } = ranges[i];
+      const rows = await metaMarketing.fetchAllAccountsInsights(since, until);
+      const creatives = metaMarketing.groupRowsByCreative(rows).map(metaMarketing.buildCreativeEntry).filter((c) => c.spend > 0);
+      const spend = sum(creatives, (c) => c.spend);
+      const purchases = sum(creatives, (c) => c.purchases);
+      const positive = creatives.filter((c) => SUCCESS_GRADES.includes(c.grade)).length;
+      results[i] = {
+        ...ranges[i],
+        creatives: creatives.length, spend, purchases,
+        cpa: purchases > 0 ? spend / purchases : null,
+        positive, positiveRate: ratio(positive, creatives.length)
+      };
+    }
+  }));
+
+  const done = results.filter((w) => !w.partial && w.creatives > 0);
+  const pool = done.length ? done : results.filter((w) => w.creatives > 0);
+  const withCpa = pool.filter((w) => w.cpa != null);
+  const best = withCpa.length ? withCpa.reduce((a, b) => (b.cpa < a.cpa ? b : a)) : null;
+  const weakest = withCpa.length > 1 ? withCpa.reduce((a, b) => (b.cpa > a.cpa ? b : a)) : null;
+  const mostPurchases = pool.length ? pool.reduce((a, b) => (b.purchases > a.purchases ? b : a)) : null;
+  const first = pool[0] || null;
+  const last = pool.length > 1 ? pool[pool.length - 1] : null;
+  const change = (a, b) => (a > 0 ? (b - a) / a : null);
+  return {
+    weeks: results,
+    best: best && best.since, weakest: weakest && weakest.since, mostPurchases: mostPurchases && mostPurchases.since,
+    trend: first && last ? {
+      from: first.since, to: last.since,
+      purchasesPct: change(first.purchases, last.purchases),
+      spendPct: change(first.spend, last.spend),
+      rateFrom: first.positiveRate, rateTo: last.positiveRate,
+      cpaFrom: first.cpa, cpaTo: last.cpa
+    } : null
+  };
+}
+
+module.exports = { successRateReport, testingReport, weeklyReport };

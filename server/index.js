@@ -374,6 +374,17 @@ app.get('/api/analytics/countries', async (req, res) => {
   }
 });
 
+app.get('/api/analytics/weekly', async (req, res) => {
+  try {
+    const end = req.query.end || new Date().toISOString().slice(0, 10);
+    const weeks = Math.min(Math.max(parseInt(req.query.weeks, 10) || 4, 2), 12);
+    res.json(await require('./successRate').weeklyReport(end, weeks));
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 app.get('/api/analytics/testing', async (req, res) => {
   try {
     const { since, until } = req.query;
