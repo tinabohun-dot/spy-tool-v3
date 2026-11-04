@@ -289,4 +289,62 @@ async function weeklyReport(endDate, weeks) {
   };
 }
 
-module.exports = { successRateReport, testingReport, weeklyReport };
+
+// Итоги месяца: все креативы с расходом за месяц, грейд по данным всего месяца.
+// "No purchases" (покупок нет вообще) и Bedolaga (покупки есть, но не дотянули
+// до Promising) — взаимоисключающие категории; Successful = Promising+.
+async function monthlyReport(month) {
+  const [y, m] = month.split('-').map(Number);
+  const since = `${month}-01`;
+  const lastDay = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const until = `${month}-${String(lastDay).padStart(2, '0')}`;
+  const rows = await metaMarketing.fetchAllAccountsInsights(since, until);
+  const creatives = metaMarketing.groupRowsByCreative(rows).map(metaMarketing.buildCreativeEntry).filter((c) => c.spend > 0);
+
+  const spend = sum(creatives, (c) => c.spend);
+  const purchases = sum(creatives, (c) => c.purchases);
+  const successful = creatives.filter((c) => SUCCESS_GRADES.includes(c.grade));
+  const noPurch = creatives.filter((c) => c.purchases === 0);
+  const noPurchSpend = sum(noPurch, (c) => c.spend);
+  const count = (g) => creatives.filter((c) => c.grade === g && c.purchases > 0).length;
+  const tiers = {
+    Alpha: count('Alpha'), Scale: count('Scale'), Test: count('Test'), Promising: count('Promising'),
+    Bedolaga: creatives.filter((c) => c.grade === 'Bedolaga' && c.purchases > 0).length,
+    NoPurchases: noPurch.length
+  };
+
+  const names = [...new Set(creatives.map((c) => c.primaryFunnel || 'Другое'))];
+  const funnels = names.map((name) => {
+    const subset = creatives.filter((c) => (c.primaryFunnel || 'Другое') === name);
+    const fSpend = sum(subset, (c) => c.spend);
+    const fPurchases = sum(subset, (c) => c.purchases);
+    const fSuccess = subset.filter((c) => SUCCESS_GRADES.includes(c.grade));
+    return {
+      name, creatives: subset.length, spend: fSpend, purchases: fPurchases,
+      cpa: fPurchases > 0 ? fSpend / fPurchases : null,
+      successful: fSuccess.length, sr: ratio(fSuccess.length, subset.length),
+      alpha: subset.filter((c) => c.grade === 'Alpha').length
+    };
+  }).sort((a, b) => b.purchases - a.purchases);
+
+  const w = creatives.slice().sort((a, b) => GRADE_RANK[b.grade] - GRADE_RANK[a.grade] || b.purchases - a.purchases)[0];
+  const winner = w && w.purchases > 0 ? {
+    name: w.name, grade: w.grade, purchases: w.purchases, cpa: w.cpa, spend: w.spend,
+    funnel: w.primaryFunnel || 'Другое', type: w.type
+  } : null;
+
+  return {
+    month, since, until,
+    partial: until >= new Date().toISOString().slice(0, 10),
+    totals: {
+      creatives: creatives.length, spend, purchases,
+      cpa: purchases > 0 ? spend / purchases : null,
+      successful: successful.length, sr: ratio(successful.length, creatives.length)
+    },
+    tiers,
+    noPurchases: { count: noPurch.length, pct: ratio(noPurch.length, creatives.length), spend: noPurchSpend, spendPct: ratio(noPurchSpend, spend) },
+    funnels, winner
+  };
+}
+
+module.exports = { successRateReport, testingReport, weeklyReport, monthlyReport };

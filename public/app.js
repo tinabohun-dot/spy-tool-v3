@@ -1780,6 +1780,7 @@ function loadSrActiveSubtab() {
   if (srSubtab === 'sr') return loadSuccessRate(since, until);
   if (srSubtab === 'testing') return loadTesting(since, until);
   if (srSubtab === 'weekly') return loadWeekly();
+  if (srSubtab === 'monthly') return loadMonthly();
 }
 
 function initSrView() {
@@ -1794,7 +1795,7 @@ $('#sr-subtabs').addEventListener('click', (e) => {
   if (!btn) return;
   srSubtab = btn.dataset.subtab;
   // У недельной динамики свои элементы выбора периода — общий фильтр дат скрываем.
-  $('#sr-filters').hidden = srSubtab === 'weekly';
+  $('#sr-filters').hidden = srSubtab === 'weekly' || srSubtab === 'monthly';
   $all('#sr-subtabs .tab').forEach((b) => b.classList.toggle('is-active', b === btn));
   $all('#view-sr .tab-panel').forEach((p) => p.classList.toggle('is-active', p.id === `subtab-${srSubtab}`));
   loadSrActiveSubtab();
@@ -2525,6 +2526,121 @@ function renderWeekly(d) {
     options: { maintainAspectRatio: false, layout: { padding: { top: 22 } }, scales: {
       y: { beginAtZero: true, title: { display: true, text: 'CREATIVES TESTED' }, grid },
       y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'POSITIVE-TIER RATE (%)' }, grid: { drawOnChartArea: false } } } },
+    plugins: [wkValueLabels]
+  });
+}
+
+// ---------- Итоги месяца ----------
+const RU_MONTHS_FULL = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+const MO_TIERS = [
+  ['Alpha', 'Alpha', '#3fa34d'], ['Scale', 'Scale', '#3b82f6'], ['Test', 'Test', '#f08a3c'],
+  ['Promising', 'Promising', '#9a82db'], ['Bedolaga', 'Bedolaga', '#e5464f'], ['NoPurchases', 'No purchases', '#b8b8b8']
+];
+
+let moSeq = 0;
+async function loadMonthly() {
+  if (!$('#mo-month').value) $('#mo-month').value = new Date().toISOString().slice(0, 7);
+  const seq = ++moSeq;
+  $('#sr-status').textContent = 'Считаю месяц... (может занять до минуты)';
+  try {
+    const data = await fetchJson(`/api/analytics/monthly?${new URLSearchParams({ month: $('#mo-month').value })}`);
+    if (seq !== moSeq) return;
+    $('#sr-status').textContent = '';
+    renderMonthly(data);
+  } catch (err) {
+    if (seq !== moSeq) return;
+    $('#sr-status').textContent = 'Ошибка: ' + err.message;
+  }
+}
+$('#mo-month').addEventListener('change', () => { if ($('#mo-month').value) loadMonthly(); });
+
+const moK = (v) => (v >= 10000 ? '$' + (v / 1000).toFixed(1) + 'k' : wkMoney(v));
+
+function renderMonthly(d) {
+  const t = d.totals;
+  if (!t.creatives) { $('#mo-board').innerHTML = '<p class="hint">За этот месяц нет креативов с расходом.</p>'; return; }
+  const [y, m] = d.month.split('-').map(Number);
+  const monthTitle = `${RU_MONTHS_FULL[m - 1]} ${y}`.toUpperCase();
+  const F = d.funnels;
+  const kpi = (label, value) => `<div class="mo-kpi"><span>${label}</span><strong>${value}</strong></div>`;
+
+  // Выводы: объём — больше всего покупок; эффективность — самый низкий CPA (среди воронок
+  // с заметным числом покупок, чтобы 1–2 случайные покупки не давали "лучший CPA"); SR — самая высокая
+  // доля успешных (среди воронок с достаточным числом креативов).
+  const volume = F.slice().sort((a, b) => b.purchases - a.purchases)[0];
+  const cpaPool = F.filter((f) => f.cpa != null && f.purchases >= 10);
+  const eff = (cpaPool.length ? cpaPool : F.filter((f) => f.cpa != null)).sort((a, b) => a.cpa - b.cpa)[0];
+  const srPool = F.filter((f) => f.creatives >= 10);
+  const srTop = (srPool.length ? srPool : F).slice().sort((a, b) => b.sr - a.sr)[0];
+  const share = volume && t.purchases ? Math.round((volume.purchases / t.purchases) * 100) : 0;
+
+  const w = d.winner;
+  let winnerTitle = '';
+  if (w) {
+    const num = (w.name.match(/^(\d+)/) || [])[1] || w.name;
+    const variant = (w.name.match(/_(N\d+)/) || [])[1];
+    winnerTitle = [num + (variant ? ' ' + variant : ''), w.funnel, w.type, w.grade].filter(Boolean).map(srEsc).join(' • ');
+  }
+
+  const tierTotal = t.creatives;
+  const tierBar = MO_TIERS.map(([key, , color]) => {
+    const n = d.tiers[key];
+    return n ? `<span style="width:${(n / tierTotal) * 100}%;background:${color}" title="${key}: ${n}"></span>` : '';
+  }).join('');
+  const tierRows = MO_TIERS.map(([key, label, color]) => {
+    const n = d.tiers[key];
+    return `<div class="mo-tier"><i style="background:${color}"></i><span>${label}</span><b></b><strong>${n}</strong><em>(${srPct(n / tierTotal, n / tierTotal < 0.01 && n > 0 ? 1 : (n / tierTotal >= 0.1 ? 1 : 1))})</em></div>`;
+  }).join('');
+
+  const tableRows = F.map((f) => `<tr class="${f === srTop ? 'mo-hl' : ''}"><td>${srEsc(f.name)}</td><td>${f.creatives}</td><td>${f.successful}</td><td><strong>${srPct(f.sr)}</strong></td></tr>`).join('');
+
+  $('#mo-board').innerHTML = `
+    <div class="wk-head"><span class="wk-head__kicker">${monthTitle}${d.partial ? ' · месяц ещё идёт' : ''}</span>
+      <h2>Monthly Performance Overview</h2><p class="hint">Итоги креативного перформанса за месяц: ${d.since} — ${d.until}</p></div>
+    <div class="mo-kpis">
+      ${kpi('CREATIVES TESTED', t.creatives)}${kpi('SPEND', wkMoney(t.spend))}${kpi('PURCHASES', t.purchases)}
+      ${kpi('BLENDED CPA', wkMoney(t.cpa))}${kpi('SUCCESSFUL', t.successful)}${kpi('SUCCESS RATE', srPct(t.sr))}
+    </div>
+    <div class="mo-grid">
+      <div class="panel-card mo-left">
+        <h4>PERFORMANCE BY FUNNEL</h4>
+        <div class="wk-canvas"><canvas id="mo-chart"></canvas></div>
+        <table class="mo-table"><thead><tr><th>FUNNEL</th><th>CREATIVES</th><th>SUCCESSFUL</th><th>SR</th></tr></thead><tbody>${tableRows}</tbody></table>
+      </div>
+      <div class="mo-right">
+        <div class="panel-card">
+          <h4>MONTH-END CREATIVE TIERS (${tierTotal})</h4>
+          <div class="mo-tierbar">${tierBar}</div>
+          <div class="mo-tiers">${tierRows}</div>
+          <div class="mo-reach"><div class="mo-reach__icon">🏆</div><div><strong>${t.successful} ${plural(t.successful, 'креатив достиг', 'креатива достигли', 'креативов достигли')}</strong><br>Promising или выше</div></div>
+        </div>
+        <div class="mo-nopurch"><div class="mo-nopurch__icon">!</div><div>
+          <strong>NO PURCHASES</strong>
+          <p>${d.noPurchases.count} из ${tierTotal} креативов не дали ни одной покупки</p>
+          <span>${moK(d.noPurchases.spend)} spend · ${srPct(d.noPurchases.spendPct)} от общего расхода</span></div></div>
+        ${w ? `<div class="panel-card mo-winner"><div class="mo-winner__label">ПОБЕДИТЕЛЬ МЕСЯЦА</div>
+          <div class="mo-winner__title">🏆 ${winnerTitle}</div>
+          <div class="mo-winner__stats">${w.purchases} purchases · CPA ${wkMoney(w.cpa)} · Spend ${wkMoney(w.spend)}</div>
+          <div class="hint" title="${srEsc(w.name)}">${srEsc(w.name)}</div></div>` : ''}
+        <div class="panel-card mo-insights">
+          ${volume ? `<div><b class="mo-ins mo-ins--vol">ОБЪЁМ</b> ${srEsc(volume.name)} дал ${volume.purchases} ${plural(volume.purchases, 'покупку', 'покупки', 'покупок')} — ${share}% всех покупок.</div>` : ''}
+          ${eff ? `<div><b class="mo-ins mo-ins--eff">ЭФФЕКТИВНОСТЬ</b> ${srEsc(eff.name)} — самый низкий CPA ${wkMoney(eff.cpa)}${eff.alpha ? ` и ${eff.alpha} Alpha` : ''}.</div>` : ''}
+          ${srTop ? `<div><b class="mo-ins mo-ins--sr">SUCCESS RATE</b> ${srEsc(srTop.name)} — самый высокий SR ${srPct(srTop.sr)}, но всего ${srTop.creatives} ${plural(srTop.creatives, 'креатив', 'креатива', 'креативов')}.</div>` : ''}
+        </div>
+      </div>
+    </div>
+    ${volume && eff && srTop ? `<div class="wk-banner">${srEsc(volume.name)} даёт масштаб, ${srEsc(eff.name)} — лучшую эффективность, а ${srEsc(srTop.name)} — самый высокий SR.${w ? ` Масштабируем ${winnerTitle.split(' • ')[0]} и тестируем его паттерны в новых вариациях.` : ''}</div>` : ''}
+    <p class="hint">Successful = Promising + Test + Scale + Alpha. Bedolaga (покупки есть, но слабый CPA) и No purchases (покупок нет) показаны как взаимоисключающие категории. Грейд считается по данным всего месяца; воронка креатива — кампания с наибольшим расходом.</p>`;
+
+  destroyChart('mo');
+  charts.mo = new Chart($('#mo-chart'), {
+    data: { labels: F.map((f) => f.name.toUpperCase()), datasets: [
+      { type: 'bar', label: 'Purchases', data: F.map((f) => f.purchases), backgroundColor: '#0f4d3a', yAxisID: 'y', labelFmt: (v) => v },
+      { type: 'line', label: 'CPA — lower is better', data: F.map((f) => (f.cpa == null ? null : Math.round(f.cpa))), borderColor: '#5b34e3', backgroundColor: '#5b34e3', yAxisID: 'y1', tension: 0.25, pointRadius: 5, labelFmt: (v) => '$' + v }
+    ] },
+    options: { maintainAspectRatio: false, layout: { padding: { top: 26 } }, scales: {
+      y: { beginAtZero: true, title: { display: true, text: 'PURCHASES' }, grid: { color: 'rgba(0,0,0,.06)' } },
+      y1: { beginAtZero: true, position: 'right', title: { display: true, text: 'CPA (USD)' }, grid: { drawOnChartArea: false } } } },
     plugins: [wkValueLabels]
   });
 }

@@ -374,6 +374,16 @@ app.get('/api/analytics/countries', async (req, res) => {
   }
 });
 
+app.get('/api/analytics/monthly', async (req, res) => {
+  try {
+    const month = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month : new Date().toISOString().slice(0, 7);
+    res.json(await require('./successRate').monthlyReport(month));
+  } catch (err) {
+    console.error(err);
+    res.status(err.status || 500).json({ error: err.message });
+  }
+});
+
 app.get('/api/analytics/weekly', async (req, res) => {
   try {
     const end = req.query.end || new Date().toISOString().slice(0, 10);

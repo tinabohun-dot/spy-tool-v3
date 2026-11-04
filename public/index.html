@@ -262,6 +262,7 @@
         <button type="button" class="tab is-active" data-subtab="sr">Success Rate</button>
         <button type="button" class="tab" data-subtab="testing">Эффективность тестов</button>
         <button type="button" class="tab" data-subtab="weekly">Динамика по неделям</button>
+        <button type="button" class="tab" data-subtab="monthly">Итоги месяца</button>
       </div>
 
       <div id="subtab-sr" class="tab-panel is-active">
@@ -307,6 +308,15 @@
           </label>
         </div>
         <div id="wk-board"></div>
+      </div>
+
+      <div id="subtab-monthly" class="tab-panel">
+        <div class="analytics-table-toolbar wk-toolbar">
+          <label class="ret-field">Месяц
+            <input type="month" id="mo-month" class="select" />
+          </label>
+        </div>
+        <div id="mo-board"></div>
       </div>
 
       <div id="subtab-testing" class="tab-panel">
