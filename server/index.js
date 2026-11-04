@@ -369,15 +369,17 @@ app.get('/api/debug/attribution', async (req, res) => {
     const { name, since, until } = req.query;
     const out = [];
     for (const [acc, id] of Object.entries(metaMarketing.accounts())) {
-      for (const variant of ['default', '7d_click', '1d_click', '7d_click,1d_view', '28d_click,1d_view', 'unified']) {
+      for (const variant of ['default', 'conv', 'mixed', 'conv_7d_click', 'conv_7d_click,1d_view']) {
         const url = new URL(`https://graph.facebook.com/v21.0/${id}/insights`);
         url.searchParams.set('fields', 'ad_id,ad_name,campaign_name,spend,actions');
         url.searchParams.set('time_range', JSON.stringify({ since, until }));
         url.searchParams.set('level', 'ad');
         url.searchParams.set('limit', '200');
         url.searchParams.set('filtering', JSON.stringify([{ field: 'ad.name', operator: 'CONTAIN', value: name }]));
-        if (variant === 'unified') url.searchParams.set('use_unified_attribution_setting', 'true');
-        else if (variant !== 'default') url.searchParams.set('action_attribution_windows', JSON.stringify(variant.split(',')));
+        if (variant.startsWith('conv')) url.searchParams.set('action_report_time', 'conversion');
+        if (variant === 'mixed') url.searchParams.set('action_report_time', 'mixed');
+        const w = variant.replace(/^conv_?/, '');
+        if (w && variant !== 'default' && variant !== 'mixed') url.searchParams.set('action_attribution_windows', JSON.stringify(w.split(',')));
         url.searchParams.set('access_token', process.env.META_ACCESS_TOKEN);
         const j = await (await fetch(url)).json();
         if (j.error) { out.push({ acc, variant, error: j.error.message }); continue; }
