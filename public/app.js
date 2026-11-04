@@ -2439,11 +2439,24 @@ const wkValueLabels = {
   afterDatasetsDraw(chart) {
     const { ctx } = chart;
     chart.data.datasets.forEach((ds, i) => {
-      if (ds.type === 'line' || !ds.labelFmt) return;
-      chart.getDatasetMeta(i).data.forEach((bar, j) => {
+      if (!ds.labelFmt) return;
+      const isLine = ds.type === 'line';
+      chart.getDatasetMeta(i).data.forEach((pt, j) => {
+        if (ds.data[j] == null) return;
+        const text = ds.labelFmt(ds.data[j]);
         ctx.save();
-        ctx.fillStyle = '#1f2a28'; ctx.font = '600 13px sans-serif'; ctx.textAlign = 'center';
-        ctx.fillText(ds.labelFmt(ds.data[j]), bar.x, bar.y - 6);
+        ctx.font = '700 13px sans-serif'; ctx.textAlign = 'center';
+        if (isLine) {
+          // Подпись точки линии — в белой плашке над точкой, чтобы не сливалась со столбиком.
+          const w = ctx.measureText(text).width + 10;
+          ctx.fillStyle = 'rgba(255,255,255,.92)';
+          ctx.fillRect(pt.x - w / 2, pt.y - 28, w, 18);
+          ctx.fillStyle = '#5b34e3';
+          ctx.fillText(text, pt.x, pt.y - 14);
+        } else {
+          ctx.fillStyle = '#1f2a28';
+          ctx.fillText(text, pt.x, pt.y - 6);
+        }
         ctx.restore();
       });
     });
@@ -2497,7 +2510,7 @@ function renderWeekly(d) {
   charts.wk1 = new Chart($('#wk-chart-1'), {
     data: { labels, datasets: [
       { type: 'bar', label: 'Purchases', data: W.map((w) => w.purchases), backgroundColor: '#0f4d3a', yAxisID: 'y', labelFmt: (v) => v },
-      { type: 'line', label: 'CPA ($)', data: W.map((w) => (w.cpa == null ? null : Math.round(w.cpa))), borderColor: '#5b34e3', backgroundColor: '#5b34e3', yAxisID: 'y1', tension: 0.25, pointRadius: 5 }
+      { type: 'line', label: 'CPA ($)', data: W.map((w) => (w.cpa == null ? null : Math.round(w.cpa))), borderColor: '#5b34e3', backgroundColor: '#5b34e3', yAxisID: 'y1', tension: 0.25, pointRadius: 5, labelFmt: (v) => '$' + v }
     ] },
     options: { maintainAspectRatio: false, layout: { padding: { top: 22 } }, scales: {
       y: { beginAtZero: true, title: { display: true, text: 'PURCHASES' }, grid },
@@ -2507,7 +2520,7 @@ function renderWeekly(d) {
   charts.wk2 = new Chart($('#wk-chart-2'), {
     data: { labels, datasets: [
       { type: 'bar', label: 'Creatives tested', data: W.map((w) => w.creatives), backgroundColor: '#f08a3c', yAxisID: 'y', labelFmt: (v) => v },
-      { type: 'line', label: 'Positive-tier rate (%)', data: W.map((w) => +(w.positiveRate * 100).toFixed(1)), borderColor: '#5b34e3', backgroundColor: '#5b34e3', yAxisID: 'y1', tension: 0.25, pointRadius: 5 }
+      { type: 'line', label: 'Positive-tier rate (%)', data: W.map((w) => +(w.positiveRate * 100).toFixed(1)), borderColor: '#5b34e3', backgroundColor: '#5b34e3', yAxisID: 'y1', tension: 0.25, pointRadius: 5, labelFmt: (v) => v + '%' }
     ] },
     options: { maintainAspectRatio: false, layout: { padding: { top: 22 } }, scales: {
       y: { beginAtZero: true, title: { display: true, text: 'CREATIVES TESTED' }, grid },
