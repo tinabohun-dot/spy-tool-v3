@@ -2582,6 +2582,16 @@ function renderMonthly(d) {
     winnerTitle = [num + (variant ? ' ' + variant : ''), w.funnel, w.type, w.grade].filter(Boolean).map(srEsc).join(' • ');
   }
 
+  // Итоговая фраза: воронки, лидирующие по нескольким показателям, объединяем в одну запись.
+  const roles = new Map();
+  [[volume, 'масштаб'], [eff, 'лучшая эффективность'], [srTop, 'самый высокий SR']].forEach(([f, role]) => {
+    if (f) roles.set(f.name, [...(roles.get(f.name) || []), role]);
+  });
+  const banner = roles.size
+    ? [...roles].map(([n, r]) => `${srEsc(n)} — ${r.join(', ')}`).join('; ') + '.' +
+      (w ? ` Масштабируем ${winnerTitle.split(' • ')[0]} и тестируем его паттерны в новых вариациях.` : '')
+    : '';
+
   const tierTotal = t.creatives;
   const tierBar = MO_TIERS.map(([key, , color]) => {
     const n = d.tiers[key];
@@ -2625,11 +2635,11 @@ function renderMonthly(d) {
         <div class="panel-card mo-insights">
           ${volume ? `<div><b class="mo-ins mo-ins--vol">ОБЪЁМ</b> ${srEsc(volume.name)} дал ${volume.purchases} ${plural(volume.purchases, 'покупку', 'покупки', 'покупок')} — ${share}% всех покупок.</div>` : ''}
           ${eff ? `<div><b class="mo-ins mo-ins--eff">ЭФФЕКТИВНОСТЬ</b> ${srEsc(eff.name)} — самый низкий CPA ${wkMoney(eff.cpa)}${eff.alpha ? ` и ${eff.alpha} Alpha` : ''}.</div>` : ''}
-          ${srTop ? `<div><b class="mo-ins mo-ins--sr">SUCCESS RATE</b> ${srEsc(srTop.name)} — самый высокий SR ${srPct(srTop.sr)}, но всего ${srTop.creatives} ${plural(srTop.creatives, 'креатив', 'креатива', 'креативов')}.</div>` : ''}
+          ${srTop ? `<div><b class="mo-ins mo-ins--sr">SUCCESS RATE</b> ${srEsc(srTop.name)} — самый высокий SR ${srPct(srTop.sr)} (${srTop.creatives} ${plural(srTop.creatives, 'креатив', 'креатива', 'креативов')}).</div>` : ''}
         </div>
       </div>
     </div>
-    ${volume && eff && srTop ? `<div class="wk-banner">${srEsc(volume.name)} даёт масштаб, ${srEsc(eff.name)} — лучшую эффективность, а ${srEsc(srTop.name)} — самый высокий SR.${w ? ` Масштабируем ${winnerTitle.split(' • ')[0]} и тестируем его паттерны в новых вариациях.` : ''}</div>` : ''}
+    ${banner ? `<div class="wk-banner">${banner}</div>` : ''}
     <p class="hint">Successful = Promising + Test + Scale + Alpha. Bedolaga (покупки есть, но слабый CPA) и No purchases (покупок нет) показаны как взаимоисключающие категории. Грейд считается по данным всего месяца; воронка креатива — кампания с наибольшим расходом.</p>`;
 
   destroyChart('mo');
