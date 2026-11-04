@@ -569,3 +569,4 @@ button.tab-pill:not(.is-disabled) { cursor: pointer; }
 .wk-insight--warm { background: #fff1e2; border-color: #fadcb9; } .wk-insight--warm .wk-insight__icon { background: #f08a3c; } .wk-insight--warm strong { color: #d9701f; }
 .wk-insight--bad { background: #fdeaea; border-color: #f6c8c8; } .wk-insight--bad .wk-insight__icon { background: #d93a3a; } .wk-insight--bad strong { color: #c0302f; }
 .wk-banner { background: #17583f; color: #fff; font-weight: 700; padding: 16px 22px; border-radius: 12px; margin-bottom: 10px; font-size: 16px; }
+.analytics-filters[hidden] { display: none; }
