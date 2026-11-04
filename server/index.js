@@ -363,6 +363,34 @@ app.get('/api/production/board', async (req, res) => {
   }
 });
 
+// ВРЕМЕННАЯ диагностика: покупки по объявлениям с разными окнами атрибуции
+app.get('/api/debug/attribution', async (req, res) => {
+  try {
+    const { name, since, until } = req.query;
+    const out = [];
+    for (const [acc, id] of Object.entries(metaMarketing.accounts())) {
+      for (const variant of ['default', '7d_click', '1d_click', '7d_click,1d_view', '28d_click,1d_view', 'unified']) {
+        const url = new URL(`https://graph.facebook.com/v21.0/${id}/insights`);
+        url.searchParams.set('fields', 'ad_id,ad_name,campaign_name,spend,actions');
+        url.searchParams.set('time_range', JSON.stringify({ since, until }));
+        url.searchParams.set('level', 'ad');
+        url.searchParams.set('limit', '200');
+        url.searchParams.set('filtering', JSON.stringify([{ field: 'ad.name', operator: 'CONTAIN', value: name }]));
+        if (variant === 'unified') url.searchParams.set('use_unified_attribution_setting', 'true');
+        else if (variant !== 'default') url.searchParams.set('action_attribution_windows', JSON.stringify(variant.split(',')));
+        url.searchParams.set('access_token', process.env.META_ACCESS_TOKEN);
+        const j = await (await fetch(url)).json();
+        if (j.error) { out.push({ acc, variant, error: j.error.message }); continue; }
+        for (const r of j.data || []) {
+          const pa = (r.actions || []).filter((a) => /purchase/.test(a.action_type));
+          out.push({ acc, variant, ad: r.ad_name, campaign: r.campaign_name, spend: r.spend, purchases: pa });
+        }
+      }
+    }
+    res.json(out);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/analytics/countries', async (req, res) => {
   try {
     const { since, until } = req.query;
