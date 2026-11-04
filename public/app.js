@@ -1661,35 +1661,59 @@ async function loadProduction() {
   }
 }
 
-function prodCells(b, fKey, kind, withL) {
-  const cell = (t, label) => `<button type="button" class="prod-cell" data-f="${fKey}" data-k="${kind}" data-t="${t}" ${b[t].length ? '' : 'disabled'}><span>${label}</span><strong>${b[t].length}</strong></button>`;
-  return `<div class="prod-cells prod-cells--${withL ? 3 : 2}">${cell('S', 'S')}${cell('V', 'V')}${withL ? cell('L', 'L') : ''}</div>`;
+const PROD_TYPES = [['V', 'Videos', '#0f4d3a'], ['S', 'Statics', '#4b2a96'], ['L', 'Longreads', '#a08ad8']];
+
+function prodBars(rows, fIdx, max) {
+  return rows.map(([label, count, color, k, t]) => {
+    const w = count > 0 ? Math.max(2.5, (count / (max || 1)) * 100) : 0;
+    return `<button type="button" class="prod-row" data-f="${fIdx}" data-k="${k}" data-t="${t}" ${count ? '' : 'disabled'}>
+      <span class="prod-row__label" style="color:${color}">${label}</span>
+      <span class="prod-row__track"><span class="prod-row__bar" style="width:${w}%;background:${color}"></span></span>
+      <span class="prod-row__count">${count}</span></button>`;
+  }).join('');
 }
 
 function renderProduction() {
   const d = prodData;
   const t = d.totals;
-  const withL = t.all.L.length > 0;
   if (!d.funnels.length) {
     $('#prod-board').innerHTML = `<p class="hint">За период ${d.since} — ${d.until} нет креативов с датой «When 'To Test'».</p>`;
     return;
   }
-  const cols = d.funnels.map((f, i) => `
-    <div class="prod-col">
-      <div class="prod-col__head" style="background:${prodColor(f.name, i)}">${srEsc(f.name)}</div>
-      <button type="button" class="prod-total" data-f="${i}" data-k="all" data-t="ALL"><strong>${f.all.total}</strong><span>TOTAL</span></button>
-      <div class="prod-bar prod-bar--ready"><span>READY TEST</span><strong>${f.readyTest.total}</strong></div>
-      ${prodCells(f.readyTest, i, 'readyTest', withL)}
-      <div class="prod-bar prod-bar--ua"><span>SEND UA</span><strong>${f.sentUA.total}</strong></div>
-      ${prodCells(f.sentUA, i, 'sentUA', withL)}
-    </div>`).join('');
-  const formats = `S: ${t.all.S.length} · V: ${t.all.V.length}` + (withL ? ` · L: ${t.all.L.length}` : '');
+  const total = t.all.total;
+  const typeCounts = PROD_TYPES.map(([key, label]) => [label, t.all[key].length]).filter(([, n]) => n > 0);
+  const panels = d.funnels.map((f, i) => {
+    // Строки по типам — от большего к меньшему; пустые типы не показываем (кроме видео/статики).
+    const typeRows = PROD_TYPES
+      .map(([key, label, color]) => [label, f.all[key].length, color, 'all', key])
+      .filter(([, n, , , key]) => n > 0 || key === 'V' || key === 'S')
+      .sort((x, y) => y[1] - x[1]);
+    const statusRows = [
+      ['Sent to UA', f.sentUA.total, '#0f4d3a', 'sentUA', 'ALL'],
+      ['Ready Test', f.readyTest.total, '#4b2a96', 'readyTest', 'ALL']
+    ];
+    return `<div class="prod-panel">
+      <div class="prod-panel__head">
+        <button type="button" class="prod-panel__num" style="color:${i % 2 ? '#4b2a96' : '#0f4d3a'}" data-f="${i}" data-k="all" data-t="ALL">${f.all.total}</button>
+        <div><div class="prod-panel__name">${srEsc(f.name)}</div>
+          <div class="prod-panel__share">${Math.round((f.all.total / total) * 100)}% of all creatives</div></div>
+      </div>
+      <div class="prod-chip">By creative type</div>
+      ${prodBars(typeRows, i, Math.max(...typeRows.map((r) => r[1])))}
+      <div class="prod-chip">By status</div>
+      ${prodBars(statusRows, i, Math.max(...statusRows.map((r) => r[1])))}
+      <div class="prod-legend"><span><i style="background:#0f4d3a"></i><b>Sent to UA</b> — launched by UA team</span>
+        <span><i style="background:#4b2a96"></i><b>Ready Test</b> — delivered for launch, not launched yet</span></div>
+    </div>`;
+  }).join('');
   $('#prod-board').innerHTML = `
-    <div class="prod-title"><strong>${t.all.total} CREATIVES</strong> <span>across ${d.funnels.length} funnels</span>
-      <span class="hint">· To Test с ${d.since} по ${d.until}</span></div>
-    <div class="panel-card prod-card"><div class="prod-cols">${cols}</div></div>
-    <div class="prod-summary">TOTAL: ${t.all.total} · READY TEST: ${t.readyTest.total} · SEND UA: ${t.sentUA.total} · ${formats}</div>
-    <p class="hint">Нажми на число, чтобы увидеть список креативов. «Send UA» — креативы, которые уже ушли в UA (есть дата «When 'Sent UA'»), «Ready Test» — остальные из попавших в период.</p>`;
+    <div class="prod-hero">
+      <div class="prod-hero__total"><strong>${total} CREATIVES</strong> total</div>
+      <div class="prod-hero__types">${typeCounts.map(([label, n], i) => `<span class="prod-hero__type prod-hero__type--${i}">${n} ${label.toUpperCase()}</span>`).join('<i>•</i>')}</div>
+      <div class="prod-hero__period">To Test: ${d.since} — ${d.until} · Sent to UA ${t.sentUA.total} · Ready Test ${t.readyTest.total}</div>
+    </div>
+    <div class="panel-card prod-panels">${panels}</div>
+    <p class="hint">Нажми на число или полосу, чтобы увидеть список креативов. «Sent to UA» — уже ушли в UA (есть дата «When 'Sent UA'»), «Ready Test» — остальные из попавших в период.</p>`;
 }
 
 $('#prod-board').addEventListener('click', (e) => {
