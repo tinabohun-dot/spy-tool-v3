@@ -384,7 +384,7 @@ app.get('/api/debug/attribution', async (req, res) => {
         const j = await (await fetch(url)).json();
         if (j.error) { out.push({ acc, variant, error: j.error.message }); continue; }
         for (const r of j.data || []) {
-          const pa = (r.actions || []).filter((a) => /purchase/.test(a.action_type));
+          const pa = (r.actions || []).filter((a) => req.query.all ? true : /purchase/.test(a.action_type));
           out.push({ acc, variant, ad: r.ad_name, campaign: r.campaign_name, spend: r.spend, purchases: pa });
         }
       }
