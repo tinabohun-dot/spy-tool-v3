@@ -1635,9 +1635,10 @@ function prodColor(name, i) {
 }
 
 function setProdPeriod(days) {
+  // Обе границы включительные, поэтому "7 дней" = сегодня и 6 предыдущих дней (ровно 7 дат), "Сегодня" = одна дата.
   const today = new Date();
   $('#prod-until').value = today.toISOString().slice(0, 10);
-  $('#prod-since').value = new Date(today.getTime() - days * 86400000).toISOString().slice(0, 10);
+  $('#prod-since').value = new Date(today.getTime() - Math.max(days - 1, 0) * 86400000).toISOString().slice(0, 10);
   $all('#prod-period-presets .segmented__btn').forEach((b) => b.classList.toggle('is-active', +b.dataset.days === days));
 }
 
@@ -1681,6 +1682,11 @@ function prodBars(rows, fIdx, max) {
   }).join('');
 }
 
+function prodDaysCount(since, until) {
+  const n = Math.round((new Date(until + 'T00:00:00Z') - new Date(since + 'T00:00:00Z')) / 86400000) + 1;
+  return n + ' ' + plural(n, 'день', 'дня', 'дней');
+}
+
 function renderProduction() {
   const d = prodData;
   const t = d.totals;
@@ -1718,7 +1724,7 @@ function renderProduction() {
     <div class="prod-hero">
       <div class="prod-hero__total"><strong>${total} CREATIVES</strong> total</div>
       <div class="prod-hero__types">${typeCounts.map(([label, n], i) => `<span class="prod-hero__type prod-hero__type--${i}">${n} ${label.toUpperCase()}</span>`).join('<i>•</i>')}</div>
-      <div class="prod-hero__period">To Test: ${d.since} — ${d.until} · Sent to UA ${t.sentUA.total} · Ready Test ${t.readyTest.total}</div>
+      <div class="prod-hero__period">When 'To Test' с ${d.since} по ${d.until} включительно (${prodDaysCount(d.since, d.until)}) · Sent to UA ${t.sentUA.total} · Ready Test ${t.readyTest.total}</div>
     </div>
     <div class="panel-card prod-panels">${panels}</div>
     <p class="hint">Нажми на число или полосу, чтобы увидеть список креативов. «Sent to UA» — уже ушли в UA (есть дата «When 'Sent UA'»), «Ready Test» — остальные из попавших в период.</p>`;
