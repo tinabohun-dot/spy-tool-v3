@@ -2589,7 +2589,7 @@ function renderMonthly(d) {
   }).join('');
   const tierRows = MO_TIERS.map(([key, label, color]) => {
     const n = d.tiers[key];
-    return `<div class="mo-tier"><i style="background:${color}"></i><span>${label}</span><b></b><strong>${n}</strong><em>(${srPct(n / tierTotal, n / tierTotal < 0.01 && n > 0 ? 1 : (n / tierTotal >= 0.1 ? 1 : 1))})</em></div>`;
+    return `<div class="mo-tier"><i style="background:${color}"></i><span>${label}</span><b></b><strong>${n}</strong><em>(${srPct(n / tierTotal, 1)})</em></div>`;
   }).join('');
 
   const tableRows = F.map((f) => `<tr class="${f === srTop ? 'mo-hl' : ''}"><td>${srEsc(f.name)}</td><td>${f.creatives}</td><td>${f.successful}</td><td><strong>${srPct(f.sr)}</strong></td></tr>`).join('');
